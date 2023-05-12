@@ -61,6 +61,7 @@ void Lexer::LexIdentifier(Token& Result) {
 
   Tok::TokenKind Kind = llvm::StringSwitch<Tok::TokenKind>(
                             llvm::StringRef(TokStart, CurPtr - TokStart))
+                            .Case("void", Tok::TokenKind::KW_void)
                             .Case("int", Tok::TokenKind::KW_int)
                             .Case("var", Tok::TokenKind::KW_var)
                             .Default(Tok::TokenKind::Identifier);
@@ -118,11 +119,15 @@ restart:
     case '+':
       return FormToken(Tok::TokenKind::Plus, TokStart, Result);
     case '-':
+      if (CurPtr[0] == '>') {
+        ++CurPtr;
+        return FormToken(Tok::TokenKind::Arrow, TokStart, Result);
+      }
       return FormToken(Tok::TokenKind::Minus, TokStart, Result);
     case '*':
       return FormToken(Tok::TokenKind::Star, TokStart, Result);
     case '/':
-      if (CurPtr[-1] == '/') {
+      if (CurPtr[0] == '/') {
         SkipSlashSlashComment();
         goto restart;
       }
