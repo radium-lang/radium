@@ -25,6 +25,8 @@ class Lexer {
   void FormToken(Tok::TokenKind Kind, const char* TokStart, Token& Result);
 
   void SkipSlashSlashComment();
+  void LexIdentifier(Token& Result);
+  void LexDigit(Token& Result);
 
  private:
   llvm::SourceMgr& SrcMgr;

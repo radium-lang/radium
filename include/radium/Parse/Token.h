@@ -13,6 +13,8 @@ namespace Tok {
 enum class TokenKind : int8_t {
   Unknown = 0,
   Eof,
+  Identifier,
+  Numeric_Constant,
 
 #define RADIUM_KEYWORD(Name) KW_##Name,
 #define RADIUM_PUNCTUATOR(X, Y) X,

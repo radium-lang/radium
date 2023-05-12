@@ -1,5 +1,6 @@
 #include "radium/Parse/Lexer.h"
 
+#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
@@ -12,12 +13,12 @@ Lexer::Lexer(unsigned BufferID, llvm::SourceMgr& SrcMgr) : SrcMgr(SrcMgr) {
 }
 
 void Lexer::Warning(const char* Loc, const char* Message) {
-  SrcMgr.PrintMessage(llvm::errs(), llvm::SMLoc::getFromPointer(Loc),
+  SrcMgr.PrintMessage(llvm::SMLoc::getFromPointer(Loc),
                       llvm::SourceMgr::DK_Warning, Message);
 }
 
 void Lexer::Error(const char* Loc, const char* Message) {
-  SrcMgr.PrintMessage(llvm::errs(), llvm::SMLoc::getFromPointer(Loc),
+  SrcMgr.PrintMessage(llvm::SMLoc::getFromPointer(Loc),
                       llvm::SourceMgr::DK_Error, Message);
 }
 
@@ -47,6 +48,36 @@ void Lexer::SkipSlashSlashComment() {
         break;
     }
   }
+}
+
+// Lex [a-zA-Z_][a-zA-Z0-9_]*
+void Lexer::LexIdentifier(Token& Result) {
+  const char* TokStart = CurPtr - 1;
+  assert((isalpha(*TokStart) || *TokStart == '_' && "Unexpected start"));
+
+  while (isalnum(*CurPtr) || *CurPtr == '_') {
+    ++CurPtr;
+  }
+
+  Tok::TokenKind Kind = llvm::StringSwitch<Tok::TokenKind>(
+                            llvm::StringRef(TokStart, CurPtr - TokStart))
+                            .Case("int", Tok::TokenKind::KW_int)
+                            .Case("var", Tok::TokenKind::KW_var)
+                            .Default(Tok::TokenKind::Identifier);
+
+  return FormToken(Kind, TokStart, Result);
+}
+
+// Lex [0-9]+
+void Lexer::LexDigit(Token& Result) {
+  const char* TokStart = CurPtr - 1;
+  assert(isdigit(*TokStart) && "Unexpected start");
+
+  while (isdigit(*CurPtr)) {
+    ++CurPtr;
+  }
+
+  return FormToken(Tok::TokenKind::Numeric_Constant, TokStart, Result);
 }
 
 void Lexer::Lex(Token& Result) {
@@ -96,5 +127,22 @@ restart:
         goto restart;
       }
       return FormToken(Tok::TokenKind::Slash, TokStart, Result);
+
+      // clang-format off
+    case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
+    case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
+    case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
+    case 'V': case 'W': case 'X': case 'Y': case 'Z':
+    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
+    case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
+    case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+    case 'v': case 'w': case 'x': case 'y': case 'z':
+    case '_':
+      return LexIdentifier(Result);
+        
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': case '8': case '9':
+      return LexDigit(Result);
+      // clang-format on
   }
 }
