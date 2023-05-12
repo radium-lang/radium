@@ -6,7 +6,7 @@
 namespace llvm {
 class MemoryBuffer;
 class SourceMgr;
-}
+}  // namespace llvm
 
 namespace Radium {
 
@@ -15,7 +15,7 @@ class Lexer {
   Lexer(unsigned BufferID, llvm::SourceMgr& SrcMgr);
 
   void Lex(Token& Result);
- 
+
   Lexer(const Lexer&) = delete;
   void operator=(const Lexer&) = delete;
 
@@ -32,6 +32,6 @@ class Lexer {
   const char* CurPtr;
 };
 
-}
+}  // namespace Radium
 
 #endif  // RADIUM_PARSE_LEXER_H
