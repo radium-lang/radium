@@ -15,13 +15,10 @@ enum class TokenKind : int8_t {
   Eof,
 
 #define RADIUM_KEYWORD(Name) KW_##Name,
-#include "radium/Parse/TokenKind.def"
-
-#undef RADIUM_KEYWORD
-
 #define RADIUM_PUNCTUATOR(X, Y) X,
 #include "radium/Parse/TokenKind.def"
 
+#undef RADIUM_KEYWORD
 #undef RADIUM_PUNCTUATOR
 
   NUM_TOKENS,

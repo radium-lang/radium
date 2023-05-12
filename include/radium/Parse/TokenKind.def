@@ -1,11 +1,11 @@
-#ifndef RADIUM_KEYWORD(Name)
+#ifndef RADIUM_KEYWORD
 #define RADIUM_KEYWORD(Name)
 #endif
 
 RADIUM_KEYWORD(int)
 RADIUM_KEYWORD(var)
 
-#ifndef RADIUM_PUNCTUATOR(X, Y)
+#ifndef RADIUM_PUNCTUATOR
 #define RADIUM_PUNCTUATOR(X, Y)
 #endif
 
