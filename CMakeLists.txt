@@ -42,7 +42,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 file(GLOB_RECURSE LIB_PATH
-    ./lib/*.cc
+    ./lib/Parse/*.cc
   )
 list(APPEND radium_SRCS ${LIB_PATH})
 
@@ -51,6 +51,8 @@ target_link_libraries(${STATIC_LIB_NAME}
   LLVMSupport
   LLVMOption
 )
+
+add_subdirectory(tools)
 
 #if (RADIUM_OPT_BUILD_UNITTESTS)
 #  add_subdirectory(unittests #[[EXCLUDE_FROM_ALL]])
