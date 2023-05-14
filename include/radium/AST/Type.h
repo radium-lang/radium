@@ -62,9 +62,54 @@ class BuiltinType : public Type {
 };
 
 class TupleType : public Type, public llvm::FoldingSetNode {
+ public:
+  using TypeOrDecl = llvm::PointerUnion<Type*, VarDecl*>;
+  const TypeOrDecl* const Fields;
+  const unsigned NumFields;
 
+  void Print(llvm::raw_ostream& OS) const;
+
+  static bool classof(const TupleType*) { return true; }
+  static bool classof(const Type* T) {
+    return T->Kind == TypeKind::TupleTypeKind;
+  }
+
+  void Profile(llvm::FoldingSetNodeID& ID) { Profile(ID, Fields, NumFields); }
+  static void Profile(llvm::FoldingSetNodeID& ID, const TypeOrDecl* Fields,
+                      unsigned NumFields);
+
+ private:
+  TupleType(const TypeOrDecl* const Fields, unsigned NumFields)
+      : Type(TypeKind::TupleTypeKind), Fields(Fields), NumFields(NumFields) {}
+  friend class ASTContext;
+};
+
+class FunctionType : public Type {
+ public:
+  Type* const Input;
+  Type* const Result;
+
+  void Print(llvm::raw_ostream& OS) const;
+
+  static bool classof(const FunctionType*) { return true; }
+  static bool classof(const Type* T) {
+    return T->Kind == TypeKind::FunctionTypeKind;
+  }
+
+ private:
+  FunctionType(Type* Input, Type* Result)
+      : Type(TypeKind::FunctionTypeKind), Input(Input), Result(Result) {}
+  friend class ASTContext;
 };
 
 }  // namespace Radium
+
+namespace llvm {
+static inline llvm::raw_ostream& operator<<(llvm::raw_ostream& OS,
+                                            const Radium::Type& T) {
+  T.Print(OS);
+  return OS;
+}
+}  // namespace llvm
 
 #endif  // RADIUM_AST_TYPE_H
