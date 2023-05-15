@@ -23,6 +23,7 @@ enum class TypeKind : uint8_t {
 };
 
 class Type {
+  friend class ASTContext;
   Type(const Type&) = delete;
   void operator=(const Type&) = delete;
 
@@ -60,6 +61,12 @@ class BuiltinType : public Type {
            T->Kind <= TypeKind::Builtin_Last;
   }
 };
+
+// class TupleTypeElt {
+//  public:
+//   Identifier Name;
+//   Type* Ty;
+// };
 
 class TupleType : public Type, public llvm::FoldingSetNode {
  public:

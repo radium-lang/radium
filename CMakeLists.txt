@@ -43,6 +43,8 @@ add_definitions(${LLVM_DEFINITIONS})
 
 file(GLOB_RECURSE LIB_PATH
     ./lib/Parse/*.cc
+    ./lib/AST/*.cc
+    ./lib/Sema/*.cc
   )
 list(APPEND radium_SRCS ${LIB_PATH})
 
@@ -50,6 +52,7 @@ add_library(${STATIC_LIB_NAME} STATIC ${radium_SRCS})
 target_link_libraries(${STATIC_LIB_NAME}
   LLVMSupport
   LLVMOption
+  LLVMCore
 )
 
 add_subdirectory(tools)
