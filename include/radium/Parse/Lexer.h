@@ -10,6 +10,8 @@ class SourceMgr;
 
 namespace Radium {
 
+class Token;
+
 class Lexer {
  public:
   Lexer(unsigned BufferID, llvm::SourceMgr& SrcMgr);

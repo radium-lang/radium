@@ -1,9 +1,9 @@
 #ifndef RADIUM_PARSE_PARSER_H
 #define RADIUM_PARSE_PARSER_H
 
-#include <llvm/Support/SMLoc.h>
-
 #include "radium/Parse/Token.h"
+
+#include "llvm/ADT/PointerUnion.h"
 
 namespace llvm {
 class SourceMgr;
@@ -13,11 +13,17 @@ namespace Radium {
 
 class Lexer;
 class Sema;
+class Expr;
+class Type;
+class Decl;
+class ASTContext;
+class ASTConsumer;
 
 class Parser {
+  ASTConsumer& Consumer;
   llvm::SourceMgr& SrcMgr;
-  Lexer* L;
-  Sema* S;
+  Lexer& L;
+  Sema& S;
 
   Token T;
 
@@ -25,7 +31,7 @@ class Parser {
   void operator=(const Parser&) = delete;
 
  public:
-  Parser(unsigned BufferID, llvm::SourceMgr& SrcMgr);
+  Parser(unsigned BufferID, ASTConsumer& Consumer);
   ~Parser();
 
   void ParseTranslationUnit();
@@ -44,7 +50,7 @@ class Parser {
     return true;
   }
 
-  void SkipUtil(Tok::TokenKind K);
+  void SkipUntil(Tok::TokenKind K);
 
   void Note(llvm::SMLoc Loc, const char* Message);
   void Warning(llvm::SMLoc Loc, const char* Message);
@@ -57,16 +63,19 @@ class Parser {
                   Tok::TokenKind SkipToTok = Tok::TokenKind::Unknown);
 
   // Decl
-  void ParseDeclTopLevel();
-  void ParseDeclVar();
+  void ParseDeclTopLevel(Decl*& Result);
+  void ParseDeclVar(Decl*& Result);
 
   // Type
-  bool ParseType(const char* Message = 0);
+  bool ParseType(Type*& Result, const char* Message = 0);
+  bool ParseTypeOrDeclVar(llvm::PointerUnion<Type*, Decl*>& Result,
+                          const char* Message = 0);
+  bool ParseTypeTuple(Type*& Result);
 
   // Expr
-  bool ParseExpr(const char* Message = 0);
-  bool ParseExprPrimary(const char* Message = 0);
-  bool ParseExprBinaryRHS(unsigned MinPrecedence = 1);
+  bool ParseExpr(Expr*& Result, const char* Message = 0);
+  bool ParseExprPrimary(Expr*& Result, const char* Message = 0);
+  bool ParseExprBinaryRHS(Expr*& Result, unsigned MinPrecedence = 1);
 };
 
 }  // namespace Radium
