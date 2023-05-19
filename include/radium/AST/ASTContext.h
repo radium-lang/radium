@@ -18,8 +18,8 @@ class FunctionType;
 class VarDecl;
 
 class ASTContext {
-  ASTContext(const ASTContext&) = delete;
-  void operator=(const ASTContext&) = delete;
+  ASTContext(const ASTContext&);
+  void operator=(const ASTContext&);
 
  public:
   ASTContext(llvm::SourceMgr& SrcMgr);

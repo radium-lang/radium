@@ -15,14 +15,14 @@ class ASTContext;
 class Type;
 class Expr;
 
-enum class DeclKind : uint8_t {
+enum DeclKind : uint8_t {
   VarDeclKind,
   // FuncDeclKind,
 };
 
 class Decl {
-  Decl(const Decl&) = delete;
-  void operator=(const Decl&) = delete;
+  Decl(const Decl&);
+  void operator=(const Decl&);
 
  protected:
   Decl(DeclKind Kind) : Kind(Kind) {}
@@ -36,7 +36,7 @@ class Decl {
 
   static bool classof(const Decl*) { return true; }
 
- private:
+ public:
   void* operator new(size_t Bytes) noexcept;
   void operator delete(void* Data) noexcept;
   void* operator new(size_t Bytes, void* Mem) noexcept;

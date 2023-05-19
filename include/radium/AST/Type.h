@@ -24,8 +24,8 @@ enum class TypeKind : uint8_t {
 
 class Type {
   friend class ASTContext;
-  Type(const Type&) = delete;
-  void operator=(const Type&) = delete;
+  Type(const Type&);
+  void operator=(const Type&);
 
  public:
   const TypeKind Kind;
@@ -42,7 +42,7 @@ class Type {
  protected:
   Type(TypeKind kind) : Kind(kind) {}
 
- private:
+ public:
   void* operator new(size_t Bytes) noexcept;
   void operator delete(void* Data) noexcept;
   void* operator new(size_t Bytes, void* Mem) noexcept;

@@ -1,7 +1,6 @@
 #include "radium/AST/ASTContext.h"
 
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/Support/Allocator.h"
 #include "radium/AST/Decl.h"
 #include "radium/AST/Type.h"
 

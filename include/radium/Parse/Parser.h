@@ -27,8 +27,8 @@ class Parser {
 
   Token T;
 
-  Parser(const Parser&) = delete;
-  void operator=(const Parser&) = delete;
+  Parser(const Parser&);
+  void operator=(const Parser&);
 
  public:
   Parser(unsigned BufferID, ASTConsumer& Consumer);

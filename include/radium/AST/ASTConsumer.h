@@ -7,8 +7,8 @@ class Decl;
 class ASTContext;
 
 class ASTConsumer {
-  ASTConsumer(const ASTConsumer&) = delete;
-  void operator=(const ASTConsumer&) = delete;
+  ASTConsumer(const ASTConsumer&);
+  void operator=(const ASTConsumer&);
 
  public:
   ASTConsumer(ASTContext& Ctx) : Context(Ctx) {}

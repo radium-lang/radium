@@ -10,8 +10,8 @@ class Sema;
 class Expr;
 
 class SemaBase {
-  SemaBase(const SemaBase&) = delete;
-  void operator=(const SemaBase&) = delete;
+  SemaBase(const SemaBase&);
+  void operator=(const SemaBase&);
 
  public:
   explicit SemaBase(Sema& S) : S(S) {}

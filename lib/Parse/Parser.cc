@@ -167,17 +167,17 @@ bool Parser::ParseType(Type*& Result, const char* Message) {
 ///                   |  decl-var
 bool Parser::ParseTypeOrDeclVar(llvm::PointerUnion<Type*, Decl*>& Result,
                                 const char* Message) {
-  if (T.Is(Tok::TokenKind::KW_var)) {
-    Decl* ResultDecl = nullptr;
-    ParseDeclVar(ResultDecl);
-    Result = ResultDecl;
-    return ResultDecl != nullptr;
-  }
-
-  Type* ResultType = nullptr;
-  if (ParseType(ResultType, Message))
-    return true;
-  Result = ResultType;
+  //if (T.Is(Tok::TokenKind::KW_var)) {
+  //  Decl* ResultDecl = nullptr;
+  //  ParseDeclVar(ResultDecl);
+  //  Result = ResultDecl;
+  //  return ResultDecl != nullptr;
+  //}
+//
+  //Type* ResultType = nullptr;
+  //if (ParseType(ResultType, Message))
+  //  return true;
+  //Result = ResultType;
   return false;
 }
 

@@ -13,7 +13,7 @@ namespace Radium {
 class ASTContext;
 class Type;
 
-enum class ExprKind : uint8_t {
+enum ExprKind : uint8_t {
   IntegerLiteralKind,
   ParenExprKind,
 
@@ -27,8 +27,8 @@ enum class ExprKind : uint8_t {
 };
 
 class Expr {
-  Expr(const Expr&) = delete;
-  void operator=(const Expr&) = delete;
+  Expr(const Expr&);
+  void operator=(const Expr&);
 
  public:
   Expr(ExprKind Kind, Type* Ty) : Kind(Kind), Ty(Ty) {}
@@ -41,7 +41,7 @@ class Expr {
 
   static bool classof(const Expr*) { return true; }
 
- private:
+ public:
   void* operator new(size_t Bytes) noexcept;
   void operator delete(void* Data) noexcept;
   void* operator new(size_t Bytes, void* Mem) noexcept;
