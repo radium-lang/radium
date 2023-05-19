@@ -20,9 +20,6 @@ enum class TokenKind : int8_t {
 #define RADIUM_PUNCTUATOR(X, Y) X,
 #include "radium/Parse/TokenKind.def"
 
-#undef RADIUM_KEYWORD
-#undef RADIUM_PUNCTUATOR
-
   NUM_TOKENS,
 };
 
