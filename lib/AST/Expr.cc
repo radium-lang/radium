@@ -1,17 +1,18 @@
-#include "radium/AST/Expr.h"
+#include "Radium/AST/Expr.h"
 
+#include "Radium/AST/ASTContext.h"
+#include "Radium/AST/Type.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-#include "radium/AST/ASTContext.h"
-#include "radium/AST/Type.h"
 
-using namespace Radium;
+namespace Radium {
+
 using llvm::cast;
 
-void* Expr::operator new(size_t Bytes, ASTContext& C,
-                         unsigned Alignment) noexcept {
-  return C.Allocate(Bytes, Alignment);
+auto Expr::operator new(size_t bytes, ASTContext& context,
+                        unsigned alignment) noexcept -> void* {
+  return context.Allocate(bytes, alignment);
 }
 
 void Expr::Dump() const {
@@ -19,12 +20,12 @@ void Expr::Dump() const {
   llvm::errs() << '\n';
 }
 
-llvm::SMLoc Expr::GetLocStart() const {
-  switch (Kind) {
+auto Expr::GetLocStart() const -> llvm::SMLoc {
+  switch (kind_) {
     case ExprKind::IntegerLiteralKind:
-      return cast<IntegerLiteral>(this)->Loc;
+      return cast<IntegerLiteral>(this)->loc_;
     case ExprKind::ParenExprKind:
-      return cast<ParenExpr>(this)->LParenLoc;
+      return cast<ParenExpr>(this)->l_paren_loc_;
     case ExprKind::BinaryAddExprKind:
     case ExprKind::BinarySubExprKind:
     case ExprKind::BinaryMulExprKind:
@@ -34,40 +35,42 @@ llvm::SMLoc Expr::GetLocStart() const {
   llvm_unreachable("expression type not handled!");
 }
 
-void Expr::Print(llvm::raw_ostream& OS, unsigned Indent) const {
-  switch (Kind) {
+void Expr::Print(llvm::raw_ostream& os, unsigned indent) const {
+  switch (kind_) {
     case ExprKind::IntegerLiteralKind:
-      cast<IntegerLiteral>(this)->Print(OS, Indent);
+      cast<IntegerLiteral>(this)->Print(os, indent);
     case ExprKind::ParenExprKind:
-      cast<ParenExpr>(this)->Print(OS, Indent);
+      cast<ParenExpr>(this)->Print(os, indent);
     case ExprKind::BinaryAddExprKind:
     case ExprKind::BinarySubExprKind:
     case ExprKind::BinaryMulExprKind:
     case ExprKind::BinaryDivExprKind:
-      cast<BinaryExpr>(this)->Print(OS, Indent);
+      cast<BinaryExpr>(this)->Print(os, indent);
   }
 }
 
-void IntegerLiteral::Print(llvm::raw_ostream& OS, unsigned Indent) const {
-  OS.indent(Indent) << "(integer_literal type='";
-  Ty->Print(OS);
-  OS << "' value=" << Val << ")";
+void IntegerLiteral::Print(llvm::raw_ostream& os, unsigned indent) const {
+  os.indent(indent) << "(integer_literal type='";
+  type_->Print(os);
+  os << "' value=" << val_ << ")";
 }
 
-void ParenExpr::Print(llvm::raw_ostream& OS, unsigned Indent) const {
-  OS.indent(Indent) << "(paren_expr type='";
-  Ty->Print(OS);
-  OS << "'\n";
-  SubExpr->Print(OS, Indent + 1);
-  OS << ")";
+void ParenExpr::Print(llvm::raw_ostream& os, unsigned indent) const {
+  os.indent(indent) << "(paren_expr type='";
+  type_->Print(os);
+  os << "'\n";
+  sub_expr_->Print(os, indent + 1);
+  os << ")";
 }
 
-void BinaryExpr::Print(llvm::raw_ostream& OS, unsigned Indent) const {
-  OS.indent(Indent) << "(binary_expr type='";
-  Ty->Print(OS);
-  OS << "'\n";
-  LHS->Print(OS, Indent + 1);
-  OS << "\n";
-  RHS->Print(OS, Indent + 1);
-  OS << ")";
+void BinaryExpr::Print(llvm::raw_ostream& os, unsigned indent) const {
+  os.indent(indent) << "(binary_expr type='";
+  type_->Print(os);
+  os << "'\n";
+  lhs_->Print(os, indent + 1);
+  os << "\n";
+  rhs_->Print(os, indent + 1);
+  os << ")";
 }
+
+}  // namespace Radium

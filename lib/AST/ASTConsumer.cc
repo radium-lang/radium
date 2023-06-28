@@ -1,5 +1,3 @@
-#include "radium/AST/ASTConsumer.h"
+#include "Radium/AST/ASTConsumer.h"
 
-using namespace Radium;
-
-ASTConsumer::~ASTConsumer() {}
+namespace Radium {}  // namespace Radium

@@ -1,18 +1,20 @@
-#include "radium/Sema/SemaBase.h"
+#include "Radium/Sema/SemaBase.h"
 
+#include "Radium/Sema/Sema.h"
 #include "llvm/Support/SourceMgr.h"
-#include "radium/Sema/Sema.h"
 
-using namespace Radium;
+namespace Radium {
 
-void SemaBase::Note(llvm::SMLoc Loc, const char* Message) {
-  S.Context.SrcMgr.PrintMessage(Loc, llvm::SourceMgr::DK_Note, Message);
+void SemaBase::Note(llvm::SMLoc loc, const char* message) {
+  sema_.context_.src_mgr_.PrintMessage(loc, llvm::SourceMgr::DK_Note, message);
 }
 
-void SemaBase::Warning(llvm::SMLoc Loc, const char* Message) {
-  S.Context.SrcMgr.PrintMessage(Loc, llvm::SourceMgr::DK_Warning, Message);
+void SemaBase::Warning(llvm::SMLoc loc, const char* message) {
+  sema_.context_.src_mgr_.PrintMessage(loc, llvm::SourceMgr::DK_Warning, message);
 }
 
-void SemaBase::Error(llvm::SMLoc Loc, const char* Message) {
-  S.Context.SrcMgr.PrintMessage(Loc, llvm::SourceMgr::DK_Error, Message);
+void SemaBase::Error(llvm::SMLoc loc, const char* message) {
+  sema_.context_.src_mgr_.PrintMessage(loc, llvm::SourceMgr::DK_Error, message);
 }
+
+}  // namespace Radium

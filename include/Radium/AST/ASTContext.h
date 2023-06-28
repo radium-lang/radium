@@ -22,25 +22,24 @@ class ASTContext {
   void operator=(const ASTContext&);
 
  public:
-  ASTContext(llvm::SourceMgr& SrcMgr);
+  ASTContext(llvm::SourceMgr& src_mgr);
   ~ASTContext();
 
-  TupleType* GetTupleType(const llvm::PointerUnion<Type*, VarDecl*>* Fields,
-                          unsigned NumFields);
+  auto GetTupleType(const llvm::PointerUnion<Type*, VarDecl*>* fields,
+                    unsigned num_fields) -> TupleType*;
 
-  FunctionType* GetFunctionType(Type* Input, Type* Result);
+  auto GetFunctionType(Type* input, Type* result) -> FunctionType*;
 
-  void* Allocate(unsigned long Bytes, unsigned Alignment);
+  auto Allocate(uint64_t bytes, unsigned alignment) -> void*;
 
- public:
-  llvm::SourceMgr& SrcMgr;
-  Type* const VoidType;
-  Type* const IntType;
+  llvm::SourceMgr& src_mgr_;
+  Type* const void_type_;
+  Type* const int_type_;
 
  private:
-  llvm::BumpPtrAllocator* Allocator;
-  void* TupleTypes;
-  void* FunctionTypes;
+  llvm::BumpPtrAllocator* allocator_;
+  void* tuple_types_;
+  void* function_types_;
 };
 
 }  // namespace Radium

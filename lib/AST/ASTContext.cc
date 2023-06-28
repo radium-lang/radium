@@ -1,74 +1,78 @@
-#include "radium/AST/ASTContext.h"
+#include "Radium/AST/ASTContext.h"
 
+#include "Radium/AST/Decl.h"
+#include "Radium/AST/Type.h"
 #include "llvm/ADT/DenseMap.h"
-#include "radium/AST/Decl.h"
-#include "radium/AST/Type.h"
 
-using namespace Radium;
+namespace Radium {
 
 using TupleTypesMapTy = llvm::FoldingSet<TupleType>;
 using FunctionTypesMapTy =
     llvm::DenseMap<std::pair<Type*, Type*>, FunctionType*>;
 
-ASTContext::ASTContext(llvm::SourceMgr& SrcMgr)
-    : Allocator(new llvm::BumpPtrAllocator()),
-      TupleTypes(new TupleTypesMapTy()),
-      FunctionTypes(new FunctionTypesMapTy()),
-      SrcMgr(SrcMgr),
-      VoidType(GetTupleType(nullptr, 0)),  // void is aka "()"
-      IntType(new(*this) BuiltinType(TypeKind::BuiltinIntKind)) {}
+ASTContext::ASTContext(llvm::SourceMgr& src_mgr)
+    : allocator_(new llvm::BumpPtrAllocator()),
+      tuple_types_(new TupleTypesMapTy()),
+      function_types_(new FunctionTypesMapTy()),
+      src_mgr_(src_mgr),
+      void_type_(GetTupleType(nullptr, 0)),  // void is aka "()"
+      int_type_(new(*this) BuiltinType(TypeKind::BuiltinIntKind)) {}
 
 ASTContext::~ASTContext() {
-  delete Allocator;
-  delete static_cast<TupleTypesMapTy*>(TupleTypes);
-  TupleTypes = nullptr;
-  delete static_cast<FunctionTypesMapTy*>(FunctionTypes);
-  FunctionTypes = nullptr;
+  delete allocator_;
+  delete static_cast<TupleTypesMapTy*>(tuple_types_);
+  tuple_types_ = nullptr;
+  delete static_cast<FunctionTypesMapTy*>(function_types_);
+  function_types_ = nullptr;
 }
 
-void* ASTContext::Allocate(unsigned long Bytes, unsigned Alignment) {
-  return Allocator->Allocate(Bytes, Alignment);
+auto ASTContext::Allocate(uint64_t bytes, unsigned alignment) -> void* {
+  return allocator_->Allocate(bytes, alignment);
 }
 
-void TupleType::Profile(llvm::FoldingSetNodeID& ID, const TypeOrDecl* Fields,
-                        unsigned NumFields) {
-  //ID.AddInteger(NumFields);
-  //for (unsigned i = 0; i != NumFields; ++i) {
-  //  if (Type* Ty = Fields[i].dyn_cast<Type*>()) {
-  //    ID.AddPointer(Ty);
-  //  } else {
-  //    ID.AddPointer(Fields[i].get<VarDecl*>());
-  //  }
-  //}
+void TupleType::Profile(llvm::FoldingSetNodeID& id, const TypeOrDecl* fields,
+                        unsigned num_fields) {
+  // ID.AddInteger(NumFields);
+  // for (unsigned i = 0; i != NumFields; ++i) {
+  //   if (Type* Ty = Fields[i].dyn_cast<Type*>()) {
+  //     ID.AddPointer(Ty);
+  //   } else {
+  //     ID.AddPointer(Fields[i].get<VarDecl*>());
+  //   }
+  // }
 }
 
-TupleType* ASTContext::GetTupleType(const TupleType::TypeOrDecl* Fields,
-                                    unsigned NumFields) {
-  llvm::FoldingSetNodeID ID;
-  TupleType::Profile(ID, Fields, NumFields);
+auto ASTContext::GetTupleType(const TupleType::TypeOrDecl* fields,
+                              unsigned num_fields) -> TupleType* {
+  llvm::FoldingSetNodeID id;
+  TupleType::Profile(id, fields, num_fields);
 
-  TupleTypesMapTy& TupleTypesMap = *static_cast<TupleTypesMapTy*>(TupleTypes);
+  TupleTypesMapTy& tuple_types_map =
+      *static_cast<TupleTypesMapTy*>(tuple_types_);
 
-  void* InsertPos = nullptr;
-  if (TupleType* TT = TupleTypesMap.FindNodeOrInsertPos(ID, InsertPos)) {
-    return TT;
+  void* insert_pos = nullptr;
+  if (TupleType* tt = tuple_types_map.FindNodeOrInsertPos(id, insert_pos)) {
+    return tt;
   }
 
-  TupleType::TypeOrDecl* FieldsCopy =
-      (TupleType::TypeOrDecl*)Allocate(sizeof(*Fields) * NumFields, 8);
-  memcpy(FieldsCopy, Fields, sizeof(*Fields) * NumFields);
+  auto* fields_copy = static_cast<TupleType::TypeOrDecl*>(
+      Allocate(sizeof(*fields) * num_fields, 8));
+  memcpy(fields_copy, fields, sizeof(*fields) * num_fields);
 
-  TupleType* New = new (*this) TupleType(FieldsCopy, NumFields);
-  TupleTypesMap.InsertNode(New, InsertPos);
-  return New;
+  auto* new_tuple = new (*this) TupleType(fields_copy, num_fields);
+  tuple_types_map.InsertNode(new_tuple, insert_pos);
+  return new_tuple;
 }
 
-FunctionType* ASTContext::GetFunctionType(Type* Input, Type* Result) {
-  FunctionType*& Entry =
-      (*static_cast<FunctionTypesMapTy*>(FunctionTypes))[{Input, Result}];
-  if (Entry)
-    return Entry;
+auto ASTContext::GetFunctionType(Type* input, Type* result) -> FunctionType* {
+  FunctionType*& entry =
+      (*static_cast<FunctionTypesMapTy*>(function_types_))[{input, result}];
+  if (entry) {
+    return entry;
+  }
 
-  Entry = new (*this) FunctionType(Input, Result);
-  return Entry;
+  entry = new (*this) FunctionType(input, result);
+  return entry;
 }
+
+}  // namespace Radium

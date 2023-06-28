@@ -1,48 +1,48 @@
-#include "radium/Parse/Lexer.h"
+#include "Radium/Parse/Lexer.h"
 
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
-using namespace Radium;
+namespace Radium {
 
-Lexer::Lexer(unsigned BufferID, llvm::SourceMgr& SrcMgr) : SrcMgr(SrcMgr) {
-  Buffer = SrcMgr.getMemoryBuffer(BufferID);
-  CurPtr = Buffer->getBufferStart();
+Lexer::Lexer(unsigned buffer_id, llvm::SourceMgr& src_mgr) : src_mgr_(src_mgr) {
+  buffer_ = src_mgr_.getMemoryBuffer(buffer_id);
+  cur_ptr_ = buffer_->getBufferStart();
 }
 
-void Lexer::Warning(const char* Loc, const char* Message) {
-  SrcMgr.PrintMessage(llvm::SMLoc::getFromPointer(Loc),
-                      llvm::SourceMgr::DK_Warning, Message);
+void Lexer::Warning(const char* loc, const char* message) {
+  src_mgr_.PrintMessage(llvm::SMLoc::getFromPointer(loc),
+                        llvm::SourceMgr::DK_Warning, message);
 }
 
-void Lexer::Error(const char* Loc, const char* Message) {
-  SrcMgr.PrintMessage(llvm::SMLoc::getFromPointer(Loc),
-                      llvm::SourceMgr::DK_Error, Message);
+void Lexer::Error(const char* loc, const char* message) {
+  src_mgr_.PrintMessage(llvm::SMLoc::getFromPointer(loc),
+                        llvm::SourceMgr::DK_Error, message);
 }
 
-void Lexer::FormToken(Tok::TokenKind Kind, const char* TokStart,
-                      Token& Result) {
-  Result.SetToken(Kind, llvm::StringRef(TokStart, CurPtr - TokStart));
+void Lexer::FormToken(Tok::TokenKind kind, const char* tok_start,
+                      Token& result) {
+  result.SetToken(kind, llvm::StringRef(tok_start, cur_ptr_ - tok_start));
 }
 
 void Lexer::SkipSlashSlashComment() {
-  assert(CurPtr[0] == '/' && CurPtr[-1] == '/' && "Not a // comment");
+  assert(cur_ptr_[0] == '/' && cur_ptr_[-1] == '/' && "Not a // comment");
   while (true) {
-    switch (*CurPtr++) {
+    switch (*cur_ptr_++) {
       case '\n':
       case '\r':
         return;
       case 0:
         // skip the null character if it in the buffer
-        if (CurPtr - 1 != Buffer->getBufferEnd()) {
-          Warning(CurPtr - 1, "null character embedded in file");
+        if (cur_ptr_ - 1 != buffer_->getBufferEnd()) {
+          Warning(cur_ptr_ - 1, "null character embedded in file");
           break;
         }
 
-        --CurPtr;
-        Warning(CurPtr - 1, "no newline at end of // comment");
+        --cur_ptr_;
+        Warning(cur_ptr_ - 1, "no newline at end of // comment");
         return;
       default:
         break;
@@ -51,48 +51,48 @@ void Lexer::SkipSlashSlashComment() {
 }
 
 // Lex [a-zA-Z_][a-zA-Z0-9_]*
-void Lexer::LexIdentifier(Token& Result) {
-  const char* TokStart = CurPtr - 1;
-  assert((isalpha(*TokStart) || *TokStart == '_' && "Unexpected start"));
+void Lexer::LexIdentifier(Token& result) {
+  const char* tok_start = cur_ptr_ - 1;
+  assert((isalpha(*tok_start) || *tok_start == '_' && "Unexpected start"));
 
-  while (isalnum(*CurPtr) || *CurPtr == '_') {
-    ++CurPtr;
+  while (isalnum(*cur_ptr_) || *cur_ptr_ == '_') {
+    ++cur_ptr_;
   }
 
-  Tok::TokenKind Kind = llvm::StringSwitch<Tok::TokenKind>(
-                            llvm::StringRef(TokStart, CurPtr - TokStart))
+  Tok::TokenKind kind = llvm::StringSwitch<Tok::TokenKind>(
+                            llvm::StringRef(tok_start, cur_ptr_ - tok_start))
                             .Case("void", Tok::TokenKind::KW_void)
                             .Case("int", Tok::TokenKind::KW_int)
                             .Case("var", Tok::TokenKind::KW_var)
                             .Default(Tok::TokenKind::Identifier);
 
-  return FormToken(Kind, TokStart, Result);
+  return FormToken(kind, tok_start, result);
 }
 
 // Lex [0-9]+
-void Lexer::LexDigit(Token& Result) {
-  const char* TokStart = CurPtr - 1;
-  assert(isdigit(*TokStart) && "Unexpected start");
+void Lexer::LexDigit(Token& result) {
+  const char* tok_start = cur_ptr_ - 1;
+  assert(isdigit(*tok_start) && "Unexpected start");
 
-  while (isdigit(*CurPtr)) {
-    ++CurPtr;
+  while (isdigit(*cur_ptr_)) {
+    ++cur_ptr_;
   }
 
-  return FormToken(Tok::TokenKind::Numeric_Constant, TokStart, Result);
+  return FormToken(Tok::TokenKind::Numeric_Constant, tok_start, result);
 }
 
-void Lexer::Lex(Token& Result) {
-  assert(CurPtr >= Buffer->getBufferStart() &&
-         CurPtr <= Buffer->getBufferEnd() &&
+void Lexer::Lex(Token& result) {
+  assert(cur_ptr_ >= buffer_->getBufferStart() &&
+         cur_ptr_ <= buffer_->getBufferEnd() &&
          "Current char pointer out of range!");
 
 restart:
-  const char* TokStart = CurPtr;
+  const char* tok_start = cur_ptr_;
 
-  switch (*CurPtr++) {
+  switch (*cur_ptr_++) {
     default:
-      Error(CurPtr - 1, "Invalid character");
-      return FormToken(Tok::TokenKind::Unknown, TokStart, Result);
+      Error(cur_ptr_ - 1, "Invalid character");
+      return FormToken(Tok::TokenKind::Unknown, tok_start, result);
 
     case ' ':
     case '\t':
@@ -101,37 +101,37 @@ restart:
       goto restart;
     case 0:
       // skip the null character if it in the buffer
-      if (CurPtr - 1 != Buffer->getBufferEnd()) {
-        Warning(CurPtr - 1, "null character embedded in file");
+      if (cur_ptr_ - 1 != buffer_->getBufferEnd()) {
+        Warning(cur_ptr_ - 1, "null character embedded in file");
         goto restart;
       }
 
-      return FormToken(Tok::TokenKind::Eof, TokStart, Result);
+      return FormToken(Tok::TokenKind::Eof, tok_start, result);
 
     case ',':
-      return FormToken(Tok::TokenKind::Comma, TokStart, Result);
+      return FormToken(Tok::TokenKind::Comma, tok_start, result);
     case ':':
-      return FormToken(Tok::TokenKind::Colon, TokStart, Result);
+      return FormToken(Tok::TokenKind::Colon, tok_start, result);
     case ';':
-      return FormToken(Tok::TokenKind::Semi, TokStart, Result);
+      return FormToken(Tok::TokenKind::Semi, tok_start, result);
     case '=':
-      return FormToken(Tok::TokenKind::Equal, TokStart, Result);
+      return FormToken(Tok::TokenKind::Equal, tok_start, result);
     case '+':
-      return FormToken(Tok::TokenKind::Plus, TokStart, Result);
+      return FormToken(Tok::TokenKind::Plus, tok_start, result);
     case '-':
-      if (CurPtr[0] == '>') {
-        ++CurPtr;
-        return FormToken(Tok::TokenKind::Arrow, TokStart, Result);
+      if (cur_ptr_[0] == '>') {
+        ++cur_ptr_;
+        return FormToken(Tok::TokenKind::Arrow, tok_start, result);
       }
-      return FormToken(Tok::TokenKind::Minus, TokStart, Result);
+      return FormToken(Tok::TokenKind::Minus, tok_start, result);
     case '*':
-      return FormToken(Tok::TokenKind::Star, TokStart, Result);
+      return FormToken(Tok::TokenKind::Star, tok_start, result);
     case '/':
-      if (CurPtr[0] == '/') {
+      if (cur_ptr_[0] == '/') {
         SkipSlashSlashComment();
         goto restart;
       }
-      return FormToken(Tok::TokenKind::Slash, TokStart, Result);
+      return FormToken(Tok::TokenKind::Slash, tok_start, result);
 
       // clang-format off
     case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
@@ -143,11 +143,13 @@ restart:
     case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
     case 'v': case 'w': case 'x': case 'y': case 'z':
     case '_':
-      return LexIdentifier(Result);
+      return LexIdentifier(result);
         
     case '0': case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8': case '9':
-      return LexDigit(Result);
+      return LexDigit(result);
       // clang-format on
   }
 }
+
+}  // namespace Radium

@@ -1,20 +1,24 @@
-#include "radium/Sema/SemaType.h"
-#include "radium/Sema/Sema.h"
-#include "radium/AST/Type.h"
+#include "Radium/Sema/SemaType.h"
+
+#include "Radium/AST/Type.h"
+#include "Radium/Sema/Sema.h"
 #include "llvm/Support/SMLoc.h"
 
-using namespace Radium;
+namespace Radium {
 
-Type* SemaType::ActOnIntType(llvm::SMLoc Loc) {
-  return S.Context.IntType;
+auto SemaType::ActOnIntType(llvm::SMLoc loc) -> Type* {
+  return sema_.context_.int_type_;
 }
 
-Type* SemaType::ActOnVoidType(llvm::SMLoc Loc) {
-  return S.Context.VoidType;
+auto SemaType::ActOnVoidType(llvm::SMLoc loc) -> Type* {
+  return sema_.context_.void_type_;
 }
 
-Type* SemaType::ActOnTupleType(llvm::SMLoc LPLoc,
-                               llvm::PointerUnion<Type*, Decl*> const* Elements,
-                               unsigned NumElements, llvm::SMLoc RPLoc) {
-  return S.Context.VoidType;
+auto SemaType::ActOnTupleType(llvm::SMLoc lp_loc,
+                              const llvm::PointerUnion<Type*, Decl*>* elements,
+                              unsigned num_elements, llvm::SMLoc rp_loc)
+    -> Type* {
+  return sema_.context_.void_type_;
 }
+
+}  // namespace Radium

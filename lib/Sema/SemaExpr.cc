@@ -1,23 +1,28 @@
-#include "radium/Sema/SemaExpr.h"
+#include "Radium/Sema/SemaExpr.h"
 
+#include "Radium/AST/Expr.h"
+#include "Radium/Sema/Sema.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/SMLoc.h"
-#include "radium/AST/Expr.h"
-#include "radium/Sema/Sema.h"
 
-using namespace Radium;
+namespace Radium {
 
-Expr* SemaExpr::ActOnNumericConstant(llvm::StringRef Text, llvm::SMLoc Loc) {
-  return new (S.Context) IntegerLiteral(Text, Loc, S.Context.IntType);
+auto SemaExpr::ActOnNumericConstant(llvm::StringRef text, llvm::SMLoc loc)
+    -> Expr* {
+  return new (sema_.context_)
+      IntegerLiteral(text, loc, sema_.context_.int_type_);
 }
 
-Expr* SemaExpr::ActOnParenExpr(llvm::SMLoc LPLoc, Expr* SubExpr,
-                               llvm::SMLoc RPLoc) {
-  return new (S.Context) ParenExpr(LPLoc, SubExpr, RPLoc, S.Context.IntType);
+auto SemaExpr::ActOnParenExpr(llvm::SMLoc lp_loc, Expr* sub_expr,
+                              llvm::SMLoc rp_loc) -> Expr* {
+  return new (sema_.context_)
+      ParenExpr(lp_loc, sub_expr, rp_loc, sema_.context_.int_type_);
 }
 
-Expr* SemaExpr::ActOnBinaryExpr(unsigned Kind, Expr* LHS, llvm::SMLoc OpLoc,
-                                Expr* RHS) {
-  return new (S.Context)
-      BinaryExpr((ExprKind)Kind, LHS, OpLoc, RHS, S.Context.IntType);
+auto SemaExpr::ActOnBinaryExpr(unsigned kind, Expr* lhs, llvm::SMLoc op_loc,
+                               Expr* rhs) -> Expr* {
+  return new (sema_.context_) BinaryExpr(static_cast<ExprKind>(kind), lhs,
+                                         op_loc, rhs, sema_.context_.int_type_);
 }
+
+}  // namespace Radium
