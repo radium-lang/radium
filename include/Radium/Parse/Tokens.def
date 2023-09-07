@@ -1,0 +1,98 @@
+#ifndef RADIUM_KEYWORD
+#define RADIUM_KEYWORD(Name)
+#endif
+
+// Keywords that start decls.
+RADIUM_KEYWORD(class)
+RADIUM_KEYWORD(destructor)
+RADIUM_KEYWORD(enum)
+RADIUM_KEYWORD(extension)
+RADIUM_KEYWORD(func)
+RADIUM_KEYWORD(import)
+RADIUM_KEYWORD(init)
+RADIUM_KEYWORD(let)
+RADIUM_KEYWORD(protocol)
+RADIUM_KEYWORD(static)
+RADIUM_KEYWORD(struct)
+RADIUM_KEYWORD(subscript)
+RADIUM_KEYWORD(typealias)
+RADIUM_KEYWORD(var)
+
+// Statement keywords.
+RADIUM_KEYWORD(if)
+RADIUM_KEYWORD(do)
+RADIUM_KEYWORD(else)
+RADIUM_KEYWORD(for)
+RADIUM_KEYWORD(in)
+RADIUM_KEYWORD(while)
+RADIUM_KEYWORD(return)
+RADIUM_KEYWORD(break)
+RADIUM_KEYWORD(continue)
+RADIUM_KEYWORD(fallthrough)
+RADIUM_KEYWORD(switch)
+RADIUM_KEYWORD(case)
+RADIUM_KEYWORD(default)
+RADIUM_KEYWORD(where)
+
+RADIUM_KEYWORD(undef)       // This is only enabled when parsing .ril files.
+RADIUM_KEYWORD(ril)         // This is only enabled when parsing .ril files.
+RADIUM_KEYWORD(ril_stage)   // This is only enabled when parsing .ril files.
+RADIUM_KEYWORD(ril_vtable)  // This is only enabled when parsing .ril files.
+RADIUM_KEYWORD(ril_global)  // This is only enabled when parsing .ril files.
+RADIUM_KEYWORD(
+    ril_witness_table)  // This is only enabled when parsing .ril files.
+
+// Expression and type keywords.
+RADIUM_KEYWORD(DynamicSelf)
+RADIUM_KEYWORD(new)
+RADIUM_KEYWORD(as)
+RADIUM_KEYWORD(is)
+RADIUM_KEYWORD(super)
+RADIUM_KEYWORD(self)
+RADIUM_KEYWORD(Self)
+RADIUM_KEYWORD(weak)
+RADIUM_KEYWORD(unowned)
+RADIUM_KEYWORD(metatype)
+RADIUM_KEYWORD(__FILE__)
+RADIUM_KEYWORD(__LINE__)
+RADIUM_KEYWORD(__COLUMN__)
+
+// Pattern keywords.
+RADIUM_KEYWORD(_)
+
+#undef RADIUM_KEYWORD
+
+#ifndef RADIUM_PUNCTUATOR
+#define RADIUM_PUNCTUATOR(Name, Str)
+#endif
+
+// Punctuators.
+RADIUM_PUNCTUATOR(l_paren, "(")
+RADIUM_PUNCTUATOR(r_paren, ")")
+RADIUM_PUNCTUATOR(l_brace, "{")
+RADIUM_PUNCTUATOR(r_brace, "}")
+RADIUM_PUNCTUATOR(l_square, "[")
+RADIUM_PUNCTUATOR(r_square, "]")
+
+RADIUM_PUNCTUATOR(period, ".")
+RADIUM_PUNCTUATOR(period_prefix, ".")
+RADIUM_PUNCTUATOR(comma, ",")
+RADIUM_PUNCTUATOR(colon, ":")
+RADIUM_PUNCTUATOR(semi, ";")
+RADIUM_PUNCTUATOR(equal, "=")
+RADIUM_PUNCTUATOR(at_sign, "@")
+RADIUM_PUNCTUATOR(ellipsis, "...")
+
+RADIUM_PUNCTUATOR(amp_prefix, "&")
+RADIUM_PUNCTUATOR(arrow, "->")
+
+RADIUM_PUNCTUATOR(exclaim_postfix, "!")  // if left-bound
+
+RADIUM_PUNCTUATOR(question_postfix, "?")  // if left-bound
+RADIUM_PUNCTUATOR(question_infix, "?")    // if not left-bound
+
+RADIUM_PUNCTUATOR(sil_dollar, "$")       // Only in RIL mode.
+RADIUM_PUNCTUATOR(sil_pound, "#")        // Only in RIL mode.
+RADIUM_PUNCTUATOR(sil_exclamation, "!")  // Only in RIL mode.
+
+#undef RADIUM_PUNCTUATOR
