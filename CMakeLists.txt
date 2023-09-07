@@ -42,9 +42,7 @@ include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 file(GLOB_RECURSE LIB_PATH
-    ./lib/Parse/*.cc
-    ./lib/AST/*.cc
-    ./lib/Sema/*.cc
+    ./lib/*/*.cc
   )
 list(APPEND radium_SRCS ${LIB_PATH})
 
