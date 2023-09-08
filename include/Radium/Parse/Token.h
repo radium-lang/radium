@@ -27,7 +27,7 @@ enum class TokenKind : uint8_t {
 
 #define RADIUM_KEYWORD(Name) kw_##Name,
 #define RADIUM_PUNCTUATOR(X, Y) X,
-#include "Radium/Parse/Tokens.def"
+#include "Radium/Parse/TokenKinds.def"
 
   num_tokens,
 };
@@ -84,7 +84,7 @@ class Token {
 #define RADIUM_KEYWORD(X) \
   case TokenKind::kw_##X: \
     return true;
-#include "Radium/Parse/Tokens.def"
+#include "Radium/Parse/TokenKinds.def"
       default:
         return false;
     }

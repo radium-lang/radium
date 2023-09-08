@@ -18,16 +18,8 @@ namespace Radium {
 /// 将指定的码点编码为UTF8流。如果是错误的代码点，则返回true。
 static auto EncodeToUTF8(unsigned char_value, SmallVectorImpl<char>& result)
     -> bool {
-  assert(char_value >= 0x80 &&
-         "Single-byte encoding should be already handled");
   // Number of bits in the value, ignoring leading zeros.
   unsigned num_bits = 32 - llvm::countLeadingZeros(char_value);
-  unsigned low_half = char_value & 0xFFFF;
-
-  // Reserved values in each plane
-  if (low_half == 0xFFFE || low_half == 0xFFFF) {
-    return true;
-  }
 
   // Handle the leading byte, based on the number of bits in the value.
   unsigned num_trailing_bytes;
@@ -50,7 +42,7 @@ static auto EncodeToUTF8(unsigned char_value, SmallVectorImpl<char>& result)
     }
   } else if (num_bits <= 3 + 6 + 6 + 6) {
     // Encoding is 0x11110aaa 10bbbbbb 10cccccc 10dddddd
-    result.push_back(static_cast<char>(0xF0 | (char_value >> (6 + 6 + 6))));
+    result.push_back(char(0xF0 | (char_value >> (6 + 6 + 6))));
     num_trailing_bytes = 3;
     // Reject over-large code points.  These cannot be encoded as UTF-16
     // surrogate pairs, so UTF-32 doesn't allow them.
@@ -69,15 +61,17 @@ static auto EncodeToUTF8(unsigned char_value, SmallVectorImpl<char>& result)
   return false;
 }
 
-/// Return the number of leading ones in the specified 8-bit value.
+/// CLO8 - Return the number of leading ones in the specified 8-bit value.
 static auto CLO8(unsigned char c) -> unsigned {
-  return llvm::countLeadingOnes<unsigned>(static_cast<uint32_t>(c) << 24);
+  return llvm::countLeadingOnes(static_cast<uint32_t>(c) << 24);
 }
 
-/// Return true if this isn't a UTF8 continuation
+/// isStartOfUTF8Character - Return true if this isn't a UTF8 continuation
 /// character, which will be of the form 0b10XXXXXX
 static auto isStartOfUTF8Character(unsigned char c) -> bool {
-  return static_cast<signed char>(c) >= 0 || c >= 0xC0;  // C0 = 0b11000000
+  // RFC 2279: The octet values FE and FF never appear.
+  // RFC 3629: The octet values C0, C1, F5 to FF never appear.
+  return c <= 0x80 || (c >= 0xC2 && c < 0xF5);
 }
 
 /// Given a pointer to the starting byte of a
