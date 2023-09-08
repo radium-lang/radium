@@ -12,10 +12,24 @@ auto SourceManager::getCodeCompletionLoc() const -> SourceLoc {
 }
 
 auto SourceManager::addNewSourceBuffer(
-    std::unique_ptr<llvm::MemoryBuffer> buffer) -> size_t {
-  auto id = llvm_src_mgr_.AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
-  buffer_id_map_[buffer->getBufferIdentifier()] = id;
+    std::unique_ptr<llvm::MemoryBuffer> buffer) -> unsigned {
+  assert(buffer);
+  llvm::StringRef buf_identifier = buffer->getBufferIdentifier();
+  auto id = llvm_src_mgr_.AddNewSourceBuffer(
+      std::move(buffer), llvm::SMLoc());
+  buffer_id_map_[buf_identifier] = id;
   return id;
+}
+
+auto SourceManager::addMemBufferCopy(llvm::MemoryBuffer* buffer) -> unsigned {
+  return addMemBufferCopy(buffer->getBuffer(), buffer->getBufferIdentifier());
+}
+
+auto SourceManager::addMemBufferCopy(llvm::StringRef input_data,
+                                     llvm::StringRef buf_identifier)
+    -> unsigned {
+  auto buffer = llvm::MemoryBuffer::getMemBufferCopy(input_data, buf_identifier);
+  return addNewSourceBuffer(std::move(buffer));
 }
 
 auto SourceManager::getIDForBufferIdentifier(StringRef buf_identifier)
@@ -42,7 +56,8 @@ auto SourceManager::getLocOffsetInBuffer(SourceLoc loc,
   return loc.loc_.getPointer() - buffer->getBuffer().begin();
 }
 
-auto SourceManager::getByteDistance(SourceLoc start, SourceLoc end) const -> unsigned {
+auto SourceManager::getByteDistance(SourceLoc start, SourceLoc end) const
+    -> unsigned {
 #ifndef NDEBUG
   unsigned buffer_id = findBufferContainingLoc(start);
   const auto* buffer = llvm_src_mgr_.getMemoryBuffer(buffer_id);

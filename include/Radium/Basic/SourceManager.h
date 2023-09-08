@@ -1,8 +1,6 @@
 #ifndef RADIUM_BASIC_SOURCEMANAGER_H
 #define RADIUM_BASIC_SOURCEMANAGER_H
 
-#include <llvm-15/llvm/Support/MemoryBuffer.h>
-
 #include "Radium/Basic/Optional.h"
 #include "Radium/Basic/SourceLoc.h"
 #include "llvm/ADT/StringMap.h"
@@ -15,7 +13,7 @@ class SourceManager {
   llvm::SourceMgr llvm_src_mgr_;
   unsigned code_completion_buffer_id_ = ~0U;
   unsigned code_completion_offset_;
-  // The buffer ID where a hashbang line #! is allowed.
+  // 使用了hashbang line `#!`的buffer id。
   unsigned hash_bang_buffer_id_ = ~0U;
   llvm::StringMap<unsigned> buffer_id_map_;
 
@@ -77,7 +75,17 @@ class SourceManager {
     return static_cast<unsigned>(buffer_id);
   }
 
-  auto addNewSourceBuffer(std::unique_ptr<llvm::MemoryBuffer> buffer) -> size_t;
+  /// 给SourceManager增加一个新的MemoryBuffer，持有其所有权。
+  auto addNewSourceBuffer(std::unique_ptr<llvm::MemoryBuffer> buffer)
+      -> unsigned;
+
+  /// 创建一个MemoryBuffer的拷贝并且添加给SourceManager进行管理，持有其所有权。
+  auto addMemBufferCopy(llvm::MemoryBuffer* buffer) -> unsigned;
+
+  /// 创建一个MemoryBuffer的拷贝并且添加给SourceManager进行管理，持有其所有权。
+  /// \p input_data 和 \p buf_identifier 为拷贝的数据。
+  auto addMemBufferCopy(llvm::StringRef input_data,
+                        llvm::StringRef buf_identifier = "") -> unsigned;
 
   auto getIDForBufferIdentifier(llvm::StringRef buf_identifier)
       -> Optional<unsigned>;

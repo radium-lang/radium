@@ -28,8 +28,10 @@ include_directories(include)
 
 # Create the RADIUM C++ library
 set(radium_SRCS)
+set(RADIUM_BASIC_SRCS)
 
 set(STATIC_LIB_NAME ${PROJECT_NAME})
+set(RADIUM_BASIC_LIB ${PROJECT_NAME}Basic)
 
 # apt install llvm-15-dev
 set(LLVM_DIR /usr/lib/llvm-15/lib/cmake/llvm)
@@ -46,6 +48,16 @@ file(GLOB_RECURSE LIB_PATH
   )
 list(APPEND radium_SRCS ${LIB_PATH})
 
+# radiumBasic lib
+file(GLOB_RECURSE LIB_BASIC_PATH
+    ./lib/Basic/*.cc
+  )
+list(APPEND RADIUM_BASIC_SRCS ${LIB_BASIC_PATH})
+add_library(${RADIUM_BASIC_LIB} STATIC ${RADIUM_BASIC_SRCS})
+target_link_libraries(${RADIUM_BASIC_LIB}
+  LLVMSupport
+)
+
 add_library(${STATIC_LIB_NAME} STATIC ${radium_SRCS})
 target_link_libraries(${STATIC_LIB_NAME}
   LLVMSupport
@@ -53,8 +65,8 @@ target_link_libraries(${STATIC_LIB_NAME}
   LLVMCore
 )
 
-add_subdirectory(tools)
+# add_subdirectory(tools)
 
-#if (RADIUM_OPT_BUILD_UNITTESTS)
-#  add_subdirectory(unittests #[[EXCLUDE_FROM_ALL]])
-#endif()
+if (RADIUM_OPT_BUILD_UNITTESTS)
+  add_subdirectory(unittests #[[EXCLUDE_FROM_ALL]])
+endif()
