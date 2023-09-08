@@ -18,6 +18,7 @@ option(RADIUM_OPT_BUILD_UNITTESTS "Build all radium unittests" ON)
 # temp define: https://discourse.llvm.org/t/python-api-problem/945
 add_compile_options(-fno-rtti)
 
+#------------------------------------------------------------
 # CMake helpers:
 include(GNUInstallDirs)
 include(CMakePackageConfigHelpers)
@@ -33,6 +34,8 @@ set(RADIUM_BASIC_SRCS)
 set(STATIC_LIB_NAME ${PROJECT_NAME})
 set(RADIUM_BASIC_LIB ${PROJECT_NAME}Basic)
 
+#------------------------------------------------------------
+##### LLVM BEGIN #####
 # apt install llvm-15-dev
 set(LLVM_DIR /usr/lib/llvm-15/lib/cmake/llvm)
 # manually install
@@ -42,13 +45,10 @@ find_package(LLVM REQUIRED CONFIG)
 
 include_directories(${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
+##### LLVM END   #####
 
-file(GLOB_RECURSE LIB_PATH
-    ./lib/*/*.cc
-  )
-list(APPEND radium_SRCS ${LIB_PATH})
-
-# radiumBasic lib
+#------------------------------------------------------------
+##### radiumBasic lib begin #####
 file(GLOB_RECURSE LIB_BASIC_PATH
     ./lib/Basic/*.cc
   )
@@ -57,13 +57,9 @@ add_library(${RADIUM_BASIC_LIB} STATIC ${RADIUM_BASIC_SRCS})
 target_link_libraries(${RADIUM_BASIC_LIB}
   LLVMSupport
 )
+##### radiumBasic lib end   #####
 
-add_library(${STATIC_LIB_NAME} STATIC ${radium_SRCS})
-target_link_libraries(${STATIC_LIB_NAME}
-  LLVMSupport
-  LLVMOption
-  LLVMCore
-)
+#------------------------------------------------------------
 
 # add_subdirectory(tools)
 
