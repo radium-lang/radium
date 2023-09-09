@@ -1,0 +1,114 @@
+
+/// 这种类型总是标准的。默认行为是TYPE(id, parent)。
+#ifndef ALWAYS_CANONICAL_TYPE
+#define ALWAYS_CANONICAL_TYPE(id, parent) TYPE(id, parent)
+#endif
+
+/// 这种类型是内置类型。默认行为是ALWAYS_CANONICAL_TYPE(id, parent)。
+#ifndef BUILTIN_TYPE
+#define BUILTIN_TYPE(id, parent) ALWAYS_CANONICAL_TYPE(id, parent)
+#endif
+
+/// 非标准，作为语法糖类型。
+/// 该类型提供了一个有效的访问器getSinglyDesugaredType()，可以去除对应语法糖。
+/// 通过访问权这个过程不一定收敛到标准类型。默认行为是TYPE(id, parent)。
+#ifndef SUGARED_TYPE
+#define SUGARED_TYPE(id, parent) TYPE(id, parent)
+#endif
+
+/// 此类型为未类型检查的类型。默认行为是TYPE(id, parent)。
+#ifndef UNCHECKED_TYPE
+#define UNCHECKED_TYPE(id, parent) TYPE(id, parent)
+#endif
+
+/// 该类型不是面向用户的类型系统的一部分。
+/// 它可以在RIL中自由使用，也可以在AST中作为声明的类型出现(例如
+/// 由于[weak]属性的应用)，但它不能直接写在普通程序中，也不能是
+/// 表达式的类型。默认行为是TYPE(id, parent)。
+#ifndef ARTIFICIAL_TYPE
+#define ARTIFICIAL_TYPE(id, parent) TYPE(id, parent)
+#endif
+
+/// 大多数元程序不关心抽象类型，所以默认忽略它们。
+#ifndef ABSTRACT_TYPE
+#define ABSTRACT_TYPE(Id, Parent)
+#endif
+
+/// 抽象类型的语法糖。
+#ifndef ABSTRACT_SUGARED_TYPE
+#define ABSTRACT_SUGARED_TYPE(Id, Parent) ABSTRACT_TYPE(Id, Parent)
+#endif
+
+/// 便于确定类型的范围。
+#ifndef TYPE_RANGE
+#define TYPE_RANGE(Id, First, Last)
+#endif
+
+// clang-format off
+UNCHECKED_TYPE(Error, Type)
+ABSTRACT_TYPE(Builtin, Type)
+  BUILTIN_TYPE(BuiltinInteger, BuiltinType)
+  BUILTIN_TYPE(BuiltinFloat, BuiltinType)
+  BUILTIN_TYPE(BuiltinRawPointer, BuiltinType)
+  BUILTIN_TYPE(BuiltinObjectPointer, BuiltinType)
+  BUILTIN_TYPE(BuiltinObjCPointer, BuiltinType)
+  BUILTIN_TYPE(BuiltinVector, BuiltinType)
+  TYPE_RANGE(Builtin, BuiltinInteger, BuiltinVector)
+SUGARED_TYPE(NameAlias, Type)
+SUGARED_TYPE(Paren, Type)
+TYPE(Tuple, Type)
+ABSTRACT_TYPE(ReferenceStorage, Type)
+  ARTIFICIAL_TYPE(UnownedStorage, ReferenceStorageType)
+  ARTIFICIAL_TYPE(WeakStorage, ReferenceStorageType)
+  TYPE_RANGE(ReferenceStorage, UnownedStorage, WeakStorage)
+ABSTRACT_TYPE(Nominal, Type)
+  TYPE(Enum, NominalType)
+  TYPE(Struct, NominalType)
+  TYPE(Class, NominalType)
+  ALWAYS_CANONICAL_TYPE(Protocol, NominalType)
+  TYPE_RANGE(Nominal, Enum, Protocol)
+TYPE(Metatype, Type)
+ALWAYS_CANONICAL_TYPE(Module, Type)
+TYPE(DynamicSelf, Type)
+ABSTRACT_TYPE(Substitutable, Type)
+  ALWAYS_CANONICAL_TYPE(Archetype, SubstitutableType)
+  ABSTRACT_TYPE(AbstractTypeParam, SubstitutableType)
+    TYPE(GenericTypeParam, AbstractTypeParamType)
+    SUGARED_TYPE(AssociatedType, AbstractTypeParamType)
+    TYPE_RANGE(AbstractTypeParam, GenericTypeParam, AssociatedType)
+  TYPE_RANGE(Substitutable, Archetype, AssociatedType)
+SUGARED_TYPE(Substituted, Type)
+TYPE(DependentMember, Type)
+ABSTRACT_TYPE(AnyFunction, Type)
+  TYPE(Function, AnyFunctionType)
+  TYPE(PolymorphicFunction, AnyFunctionType)
+  TYPE(GenericFunction, AnyFunctionType)
+  TYPE_RANGE(AnyFunction, Function, GenericFunction)
+ARTIFICIAL_TYPE(SILFunction, Type)
+TYPE(Array, Type)
+ABSTRACT_SUGARED_TYPE(SyntaxSugar, Type)
+  SUGARED_TYPE(ArraySlice, SyntaxSugarType)
+  SUGARED_TYPE(Optional, SyntaxSugarType)
+  SUGARED_TYPE(UncheckedOptional, SyntaxSugarType)
+  TYPE_RANGE(SyntaxSugar, ArraySlice, UncheckedOptional)
+TYPE(ProtocolComposition, Type)
+TYPE(LValue, Type)
+TYPE(InOut, Type)
+UNCHECKED_TYPE(UnboundGeneric, Type)
+ABSTRACT_TYPE(BoundGeneric, Type)
+  TYPE(BoundGenericClass, BoundGenericType)
+  TYPE(BoundGenericEnum, BoundGenericType)
+  TYPE(BoundGenericStruct, BoundGenericType)
+  TYPE_RANGE(BoundGeneric, BoundGenericClass, BoundGenericStruct)
+UNCHECKED_TYPE(TypeVariable, Type)
+// clang-format on
+
+#undef TYPE_RANGE
+#undef ABSTRACT_SUGARED_TYPE
+#undef ABSTRACT_TYPE
+#undef UNCHECKED_TYPE
+#undef ARTIFICIAL_TYPE
+#undef SUGARED_TYPE
+#undef BUILTIN_TYPE
+#undef ALWAYS_CANONICAL_TYPE
+#undef TYPE

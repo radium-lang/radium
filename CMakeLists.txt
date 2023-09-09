@@ -30,9 +30,11 @@ include_directories(include)
 # Create the RADIUM C++ library
 set(radium_SRCS)
 set(RADIUM_BASIC_SRCS)
+set(RADIUM_AST_SRCS)
 
 set(STATIC_LIB_NAME ${PROJECT_NAME})
 set(RADIUM_BASIC_LIB ${PROJECT_NAME}Basic)
+set(RADIUM_AST_LIB ${PROJECT_NAME}AST)
 
 #------------------------------------------------------------
 ##### LLVM BEGIN #####
@@ -58,6 +60,17 @@ target_link_libraries(${RADIUM_BASIC_LIB}
   LLVMSupport
 )
 ##### radiumBasic lib end   #####
+
+##### radiumAST lib begin #####
+file(GLOB_RECURSE LIB_AST_PATH
+    ./lib/AST/*.cc
+  )
+list(APPEND RADIUM_AST_SRCS ${LIB_AST_PATH})
+add_library(${RADIUM_AST_LIB} STATIC ${RADIUM_AST_SRCS})
+target_link_libraries(${RADIUM_AST_LIB}
+  LLVMSupport
+)
+##### radiumAST lib end   #####
 
 #------------------------------------------------------------
 

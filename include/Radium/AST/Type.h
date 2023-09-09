@@ -1,131 +1,106 @@
 #ifndef RADIUM_AST_TYPE_H
 #define RADIUM_AST_TYPE_H
 
-#include "llvm/ADT/FoldingSet.h"
-#include "llvm/ADT/PointerUnion.h"
+#include <functional>
+#include <string>
 
-namespace llvm {
-class raw_ostream;
-}  // namespace llvm
+#include "Radium/AST/PrintOptions.h"
+#include "Radium/Basic/LLVM.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseMapInfo.h"
 
 namespace Radium {
 
-class ASTContext;
-class VarDecl;
+class ASTPrinter;
+class ArchetypeType;
+class CanType;
+class LazyResolver;
+class Module;
+class TypeBase;
+class Type;
+class TypeWalker;
+class SubstitutableType;
 
-enum class TypeKind : uint8_t {
-  BuiltinIntKind,
-  TupleTypeKind,
-  FunctionTypeKind,
-
-  Builtin_First = BuiltinIntKind,
-  Builtin_Last = BuiltinIntKind,
-};
+// 从可替换类型到其替换类型的类型替换映射。
+using TypeSubstitutionMap = llvm::DenseMap<SubstitutableType*, Type>;
 
 class Type {
- public:
-  Type(const Type&) = delete;
-  void operator=(const Type&) = delete;
-
-  void Dump() const;
-
-  void Print(llvm::raw_ostream& os) const;
-
-  static auto classof(const Type* /*unused*/) -> bool { return true; }
-
-  auto operator new(size_t bytes, ASTContext& context,
-                    unsigned alignment = 8) noexcept -> void*;
-
- protected:
-  Type(TypeKind kind) : kind_(kind) {}
+  TypeBase* ptr_;
 
  public:
-  friend class ASTContext;
+  /*implicit*/ Type(TypeBase* ptr) : ptr_(ptr) {}
 
-  auto operator new(size_t bytes) noexcept -> void*;
-  auto operator delete(void* data) noexcept -> void;
-  auto operator new(size_t bytes, void* mem) noexcept -> void*;
+  auto getPointer() const -> TypeBase* { return ptr_; }
 
-  const TypeKind kind_;
-};
+  auto isNull() const -> bool { return ptr_ == nullptr; }
 
-class BuiltinType : public Type {
- public:
-  void Print(llvm::raw_ostream& os) const;
+  auto operator->() const -> TypeBase* { return ptr_; }
+  explicit operator bool() const { return ptr_ != nullptr; }
 
-  static auto classof(const BuiltinType* /*unused*/) -> bool { return true; }
-  static auto classof(const Type* t) -> bool {
-    return t->kind_ >= TypeKind::Builtin_First &&
-           t->kind_ <= TypeKind::Builtin_Last;
-  }
+  auto walk(TypeWalker& walker) const -> bool;
+  auto walk(TypeWalker&& walker) const -> bool { return walk(walker); }
+
+  // 遍历给定类型及其子类型，查找给定谓词返回true的类型。
+  auto findIf(const std::function<bool(Type)>& pred) const -> bool;
+
+  // 通过将用户提供的函数应用于每个类型来转换给定的类型。
+  auto transform(const std::function<Type(Type)>& fn) const -> Type;
+
+  // 用新的具体类型替换可替换类型的引用，并返回被替换的结果。
+  auto subst(Module* module, TypeSubstitutionMap& substitutions,
+             bool ignore_missing, LazyResolver* resolver) const -> Type;
+
+  void dump() const;
+
+  void print(raw_ostream& os, const PrintOptions& po = PrintOptions()) const;
+  void print(ASTPrinter& printer, const PrintOptions& po) const;
+
+  // 以字符串形式返回类型的名称。
+  auto getString(const PrintOptions& po = PrintOptions()) const -> std::string;
+
+  auto getCanonicalTypeOrNull() const -> CanType;
 
  private:
-  friend class ASTContext;
-  BuiltinType(TypeKind k) : Type(k) {}
+  // 禁止对类型进行直接比较，因为它们可能不是标准类型。
+  void operator==(Type type) const = delete;
+  void operator!=(Type type) const = delete;
 };
 
-// class TupleTypeElt {
-//  public:
-//   Identifier Name;
-//   Type* Ty;
-// };
+/// 这是静态并为标准（Canonical）的类型。
+class CanType : public Type {
+  auto isActuallyCanonicalOrNull() const -> bool;
 
-class TupleType : public Type, public llvm::FoldingSetNode {
+  static auto hasReferenceSemanticsImpl(CanType type) -> bool;
+  static auto isExistentialTypeImpl(CanType type) -> bool;
+
  public:
-  using TypeOrDecl = llvm::PointerUnion<Type*, VarDecl*>;
-
-  void Print(llvm::raw_ostream& os) const;
-
-  static auto classof(const TupleType* /*unused*/) -> bool { return true; }
-  static auto classof(const Type* t) -> bool {
-    return t->kind_ == TypeKind::TupleTypeKind;
+  explicit CanType(TypeBase* p = nullptr) : Type(p) {
+    assert(isActuallyCanonicalOrNull() &&
+           "Forming a CanType out of a non-canonical type!");
+  }
+  explicit CanType(Type t) : Type(t) {
+    assert(isActuallyCanonicalOrNull() &&
+           "Forming a CanType out of a non-canonical type!");
   }
 
-  void Profile(llvm::FoldingSetNodeID& id) {
-    Profile(id, fields_, num_fields_);
-  }
-  static void Profile(llvm::FoldingSetNodeID& id, const TypeOrDecl* fields,
-                      unsigned num_fields);
-
- private:
-  TupleType(const TypeOrDecl* const fields, unsigned num_fields)
-      : Type(TypeKind::TupleTypeKind),
-        fields_(fields),
-        num_fields_(num_fields) {}
-  friend class ASTContext;
-
- public:
-  const TypeOrDecl* const fields_;
-  const unsigned num_fields_;
-};
-
-class FunctionType : public Type {
- public:
-  void Print(llvm::raw_ostream& os) const;
-
-  static auto classof(const FunctionType* /*unused*/) -> bool { return true; }
-  static auto classof(const Type* t) -> bool {
-    return t->kind_ == TypeKind::FunctionTypeKind;
+  auto hasReferenceSemantics() const -> bool {
+    return hasReferenceSemanticsImpl(*this);
   }
 
- private:
-  FunctionType(Type* input, Type* result)
-      : Type(TypeKind::FunctionTypeKind), input_(input), result_(result) {}
-  friend class ASTContext;
+  auto isExistentialType() const -> bool {
+    return isExistentialTypeImpl(*this);
+  }
 
- public:
-  Type* const input_;
-  Type* const result_;
+  auto operator==(CanType t) const -> bool {
+    return getPointer() == t.getPointer();
+  }
+  auto operator!=(CanType t) const -> bool { return !operator==(t); }
+
+  auto operator<(CanType t) const -> bool {
+    return getPointer() < t.getPointer();
+  }
 };
 
 }  // namespace Radium
-
-namespace llvm {
-static inline auto operator<<(llvm::raw_ostream& os, const Radium::Type& t)
-    -> llvm::raw_ostream& {
-  t.Print(os);
-  return os;
-}
-}  // namespace llvm
 
 #endif  // RADIUM_AST_TYPE_H
