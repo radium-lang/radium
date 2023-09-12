@@ -1,13 +1,14 @@
 #ifndef RADIUM_BASIC_SOURCEMANAGER_H
 #define RADIUM_BASIC_SOURCEMANAGER_H
 
-#include "Radium/Basic/Optional.h"
 #include "Radium/Basic/SourceLoc.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/SourceMgr.h"
 
 namespace Radium {
 
+// TODO: 改造为llvm vfs管理。
 /// 用于管理source buffer。
 class SourceManager {
   llvm::SourceMgr llvm_src_mgr_;
@@ -88,7 +89,7 @@ class SourceManager {
                         llvm::StringRef buf_identifier = "") -> unsigned;
 
   auto getIDForBufferIdentifier(llvm::StringRef buf_identifier)
-      -> Optional<unsigned>;
+      -> llvm::Optional<unsigned>;
 
   auto getLocForBufferStart(unsigned buffer_id) const -> SourceLoc;
 
@@ -97,13 +98,21 @@ class SourceManager {
 
   auto getByteDistance(SourceLoc start, SourceLoc end) const -> unsigned;
 
-  auto getLocForOffset(unsigned buffer_id, unsigned offset) const -> SourceLoc;
+  auto getLocForOffset(unsigned buffer_id, unsigned offset) const -> SourceLoc {
+    return getLocForBufferStart(buffer_id).getAdvancedLoc(offset);
+  }
 
   auto getLineAndColumn(SourceLoc loc, int buffer_id = -1) const
       -> std::pair<unsigned, unsigned> {
     assert(loc.isValid() && "Loc should be valid");
     return llvm_src_mgr_.getLineAndColumn(loc.loc_, buffer_id);
   }
+
+  auto getRangeForBuffer(unsigned buffer_id) const -> CharSourceRange;
+
+  auto extractText(CharSourceRange range,
+                   llvm::Optional<unsigned> buffer_id = llvm::None) const
+      -> llvm::StringRef;
 };
 
 }  // namespace Radium

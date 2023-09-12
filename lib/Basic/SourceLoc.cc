@@ -15,8 +15,7 @@ auto SourceManager::addNewSourceBuffer(
     std::unique_ptr<llvm::MemoryBuffer> buffer) -> unsigned {
   assert(buffer);
   llvm::StringRef buf_identifier = buffer->getBufferIdentifier();
-  auto id = llvm_src_mgr_.AddNewSourceBuffer(
-      std::move(buffer), llvm::SMLoc());
+  auto id = llvm_src_mgr_.AddNewSourceBuffer(std::move(buffer), llvm::SMLoc());
   buffer_id_map_[buf_identifier] = id;
   return id;
 }
@@ -28,15 +27,16 @@ auto SourceManager::addMemBufferCopy(llvm::MemoryBuffer* buffer) -> unsigned {
 auto SourceManager::addMemBufferCopy(llvm::StringRef input_data,
                                      llvm::StringRef buf_identifier)
     -> unsigned {
-  auto buffer = llvm::MemoryBuffer::getMemBufferCopy(input_data, buf_identifier);
+  auto buffer =
+      llvm::MemoryBuffer::getMemBufferCopy(input_data, buf_identifier);
   return addNewSourceBuffer(std::move(buffer));
 }
 
 auto SourceManager::getIDForBufferIdentifier(StringRef buf_identifier)
-    -> Optional<unsigned> {
+    -> llvm::Optional<unsigned> {
   auto it = buffer_id_map_.find(buf_identifier);
   if (it == buffer_id_map_.end()) {
-    return Nothing;
+    return llvm::None;
   }
   return it->second;
 }
@@ -66,6 +66,27 @@ auto SourceManager::getByteDistance(SourceLoc start, SourceLoc end) const
          "End location is not from the same buffer");
 #endif
   return end.loc_.getPointer() - start.loc_.getPointer();
+}
+
+auto SourceManager::getRangeForBuffer(unsigned buffer_id) const
+    -> CharSourceRange {
+  const auto* buffer = llvm_src_mgr_.getMemoryBuffer(buffer_id);
+  SourceLoc start{llvm::SMLoc::getFromPointer(buffer->getBufferStart())};
+  return CharSourceRange(start, buffer->getBufferSize());
+}
+
+auto SourceManager::extractText(CharSourceRange range,
+                                llvm::Optional<unsigned> buffer_id) const
+    -> llvm::StringRef {
+  assert(range.isValid() && "range should be valid");
+
+  if (!buffer_id) {
+    buffer_id = findBufferContainingLoc(range.getStart());
+  }
+  llvm::StringRef buffer =
+      llvm_src_mgr_.getMemoryBuffer(*buffer_id)->getBuffer();
+  return buffer.substr(getLocOffsetInBuffer(range.getStart(), *buffer_id),
+                       range.getByteLength());
 }
 
 void SourceLoc::printLineAndColumn(llvm::raw_ostream& os,
@@ -102,27 +123,61 @@ void SourceLoc::dump(const SourceManager& src_mgr) const {
   print(llvm::errs(), src_mgr);
 }
 
+void SourceRange::widen(SourceRange other) {
+  if (other.start.loc_.getPointer() < start.loc_.getPointer()) {
+    start = other.start;
+  }
+  if (other.end.loc_.getPointer() > end.loc_.getPointer()) {
+    end = other.end;
+  }
+}
+
+auto SourceRange::contains(SourceLoc loc) const -> bool {
+  return start.loc_.getPointer() <= loc.loc_.getPointer() &&
+         loc.loc_.getPointer() <= end.loc_.getPointer();
+}
+
+auto SourceRange::overlaps(SourceRange other) const -> bool {
+  return contains(other.start) || other.contains(start);
+}
+
 void SourceRange::print(raw_ostream& os, const SourceManager& sm,
                         unsigned& last_buffer_id, bool print_text) const {
+  CharSourceRange(sm, start, end).print(os, sm, last_buffer_id, print_text);
+}
+
+void SourceRange::dump(const SourceManager& sm) const {
+  print(llvm::errs(), sm);
+}
+
+CharSourceRange::CharSourceRange(const SourceManager& sm, SourceLoc start,
+                                 SourceLoc end)
+    : start_(start) {
+  assert(start.isValid() == end.isValid() &&
+         "Start and end should either both be valid or both be invalid!");
+  if (start.isValid()) {
+    byte_length_ = sm.getByteDistance(start, end);
+  }
+}
+
+void CharSourceRange::print(raw_ostream& os, const SourceManager& sm,
+                            unsigned& last_buffer_id, bool print_text) const {
   os << '[';
-  start.print(os, sm, last_buffer_id);
+  start_.print(os, sm, last_buffer_id);
   os << " - ";
-  end.print(os, sm, last_buffer_id);
+  getEnd().print(os, sm, last_buffer_id);
   os << ']';
 
-  if (start.isInvalid() || end.isInvalid()) {
+  if (start_.isInvalid() || getEnd().isInvalid()) {
     return;
   }
 
   if (print_text) {
-    os << " RangeText=\""
-       << StringRef(start.loc_.getPointer(),
-                    end.loc_.getPointer() - start.loc_.getPointer() + 1)
-       << '"';
+    os << " RangeText=\"" << sm.extractText(*this) << '"';
   }
 }
 
-void SourceRange::dump(const SourceManager& sm) const {
+void CharSourceRange::dump(const SourceManager& sm) const {
   print(llvm::errs(), sm);
 }
 
