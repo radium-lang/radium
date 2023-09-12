@@ -16,3 +16,9 @@ let x = 5 // Comment after 5
 
 1. `// Comment before x` 是`let`关键字的leading trivia，因为它们位于该关键字的前面。
 2. `// Comment after 5` 以及它前面的空格是数字`5`的trailing trivia，因为它们位于该数字之后。
+
+## Lexer.cpp中的实现
+
+tips:
+
+1. 从`cur_ptr_`获取`tok_start`的时候，总会需要`cur_ptr_ - 1`来获取起始字符，因为在lexer的lexing loop中`switch (*cur_ptr_++)`总会自动将cur_ptr_自增。

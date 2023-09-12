@@ -768,7 +768,7 @@ void Lexer::lexImpl() {
     return formToken(TokenKind::eof, tok_start);
   }
 
-  switch (*cur_ptr++) {
+  switch (*cur_ptr_++) {
     default: {
       const char* tmp = cur_ptr_ - 1;
       if (advanceIfValidStartOfIdentifier(tmp, buffer_end_)) {

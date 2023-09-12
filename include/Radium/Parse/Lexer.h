@@ -43,8 +43,6 @@ enum class ConflictMarkerKind {
   /// 由至少7个"<"s开始的普通或diff3冲突标记，由至少7个"="s或"|"s分隔，
   /// 并由至少7个">"s终止。
   Normal,
-  /// A Perforce-style conflict marker, initiated by 4 ">"s,
-  /// separated by 4 "="s, and terminated by 4 "<"s.
   /// 由4个">"s开始的Perforce风格的冲突标记，由4个"="s分隔，并且由4个"<"s终止。
   Perforce
 };
