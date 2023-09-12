@@ -3,32 +3,53 @@
 
 #include "Radium/Basic/SourceLoc.h"
 #include "Radium/Basic/SourceManager.h"
+#include "Radium/Parse/LexerState.h"
 #include "Radium/Parse/Token.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace Radium {
 
+// /// 注释保留模式。
+// enum class CommentRetentionMode {
+//   None,
+//   AttachToNextToken,
+//   ReturnAsTokens,
+// };
+// 
+// /// 词法分析器的hashbang模式。
+// enum class HashbangMode : bool {
+//   Disallowed,
+//   Allowed,
+// };
+// 
+// /// 词法分析器的模式。
+// enum class LexerMode { Radium, RadiumInterface, RIL };
+// 
+// /// 是否词法分析器应该尝试词法分析一个`/.../`正则表达式字面量。
+// enum class LexerForwardSlashRegexMode {
+//   /// 不会词法分析`/.../`正则表达式字面量。
+//   None,
+//   /// `/.../`正则表达式字面量将被词法分析，但只有在成功时才会词法分析。
+//   Tentative,
+//   /// 对于'/'字符，总是会词法分析`/.../`正则表达式字面量。
+//   Always
+// };
+// 
+// /// 词法分析器可能遇到的冲突标记的种类。
+// enum class ConflictMarkerKind {
+//   /// 由至少7个"<"s开始的普通或diff3冲突标记，由至少7个"="s或"|"s分隔，
+//   /// 并由至少7个">"s终止。
+//   Normal,
+//   /// A Perforce-style conflict marker, initiated by 4 ">"s,
+//   /// separated by 4 "="s, and terminated by 4 "<"s.
+//   /// 由4个">"s开始的Perforce风格的冲突标记，由4个"="s分隔，并且由4个"<"s终止。
+//   Perforce
+// };
+
 class Lexer {
+  using State = LexerState;
+
  public:
-  class State {
-    friend class Lexer;
-
-   public:
-    State() = default;
-
-    auto advance(unsigned offset) const -> State {
-      assert(isValid());
-      return State(loc_.getAdvancedLoc(offset));
-    }
-
-   private:
-    explicit State(SourceLoc loc) : loc_(loc) {}
-
-    auto isValid() const -> bool { return loc_.isValid(); }
-
-    SourceLoc loc_;
-  };
-
   struct StringSegment {
     enum : char {
       Literal,
@@ -68,39 +89,23 @@ class Lexer {
   Lexer(const Lexer&) = delete;
   void operator=(const Lexer&) = delete;
 
-  Lexer(const SourceManager& src_mgr, bool in_ril_mode, unsigned buffer_id,
-        bool keep_comments);
+  Lexer(const SourceManager& src_mgr, unsigned buffer_id,
+        bool in_ril_mode, bool keep_comments);
 
-  void primeLexer();
-
-  void initSubLexer(Lexer& parent, State begin_state, State end_state);
+  void initialize(unsigned offset, unsigned end_offset);
 
  public:
-  // 创建一个扫描整个源缓冲区的普通词法分析器。
-  Lexer(const SourceManager& src_mgr, unsigned buffer_id, bool in_ril_mode,
-        bool keep_comments = false)
-      : Lexer(src_mgr, in_ril_mode, buffer_id, keep_comments) {
-    primeLexer();
-  }
+  // 创建一个扫描整个源缓冲区的词法分析器。
+  Lexer(unsigned buffer_id, const SourceManager& src_mgr, bool in_ril_mode,
+        bool keep_comments = false);
 
   // 创建一个扫描源缓冲区的子范围的词法分析器。
-  Lexer(const SourceManager& src_mgr, unsigned buffer_id, bool in_ril_mode,
-        bool keep_comments, unsigned offset, unsigned end_offset)
-      : Lexer(src_mgr, in_ril_mode, buffer_id, keep_comments) {
-    assert(offset <= end_offset && "Invalid range");
-    initSubLexer(*this, State(getLocForStartOfBuffer().getAdvancedLoc(offset)),
-                 State(getLocForStartOfBuffer().getAdvancedLoc(end_offset)));
-  }
-
-  Lexer(Lexer& parent, State begin_state, State end_state)
-      : Lexer(parent.src_mgr_, parent.in_ril_mode_, parent.buffer_id_,
-              parent.isKeepingComments()) {
-    initSubLexer(parent, begin_state, end_state);
-  }
+  Lexer(Lexer& parent, State begin_state, State end_state, bool in_ril_mode,
+        bool keep_comments = false);
 
   auto isKeepingComments() const -> bool { return keep_comments_; }
 
-  // 如果此词法分析器将生成code completion token.，则返回true。
+  // 如果此词法分析器将生成code completion token，则返回true。
   auto isCodeCompletion() const -> bool {
     return code_completion_ptr_ != nullptr;
   }
@@ -168,8 +173,8 @@ class Lexer {
   }
 
   // 给定一个字符串字面量，将其分成可能被篡改的字符串的string/expr段。
-  static void getStringLiteralSegments(const Token& str,
-                                       SmallVectorImpl<StringSegment>& segments);
+  static void getStringLiteralSegments(
+      const Token& str, SmallVectorImpl<StringSegment>& segments);
 
   // 返回指定字符字面量的UTF32码点。
   auto getEncodedCharacterLiteral(const Token& tok) -> uint32_t;
@@ -212,7 +217,9 @@ class Lexer {
   void lexStringLiteral();
 
  private:
+  // 源码操作管理。
   const SourceManager& src_mgr_;
+  // 记录buffer id。
   const unsigned buffer_id_;
   // 指向缓冲区第一个字符的指针，即使扫描buffer的subrange也是第一个字符。
   const char* buffer_start_;

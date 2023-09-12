@@ -6,27 +6,12 @@
 #include "Radium/Basic/LLVM.h"
 #include "Radium/Basic/SourceLoc.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSwitch.h"
 
 namespace Radium {
 
 enum class TokenKind : uint8_t {
-  unknown = 0,
-  eof,
-  code_complete,
-  identifier,
-  oper_binary,
-  oper_postfix,
-  oper_prefix,
-  dollarident,
-  integer_literal,
-  floating_literal,
-  string_literal,
-  character_literal,
-  sil_local_name,  // %42 in RIL mode.
-  comment,
-
-#define RADIUM_KEYWORD(Name) kw_##Name,
-#define RADIUM_PUNCTUATOR(X, Y) X,
+#define RADIUM_TOKEN(Name) Name,
 #include "Radium/Parse/TokenKinds.def"
 
   num_tokens,
@@ -34,22 +19,78 @@ enum class TokenKind : uint8_t {
 
 class Token {
  public:
-  Token() : kind_(TokenKind::num_tokens), at_start_of_line_(false) {}
+  Token(TokenKind kind, llvm::StringRef text, unsigned comment_length = 0)
+      : kind_(kind),
+        at_start_of_line_(false),
+        escaped_identifier_(false),
+        multiline_string_(false),
+        custom_delimiter_len_(0),
+        comment_length_(comment_length),
+        text_(text) {}
+
+  Token() : Token(TokenKind::num_tokens, {}, 0) {}
 
   auto getKind() const -> TokenKind { return kind_; }
-
   void setKind(TokenKind kind) { kind_ = kind; }
+  void clearCommentLength() { comment_length_ = 0; }
 
   auto is(TokenKind kind) const -> bool { return kind_ == kind; }
-
   auto isNot(TokenKind kind) const -> bool { return kind_ != kind; }
-
-  auto isAnyOperator() const -> bool {
-    return kind_ == TokenKind::oper_binary ||
-           kind_ == TokenKind::oper_postfix || kind_ == TokenKind::oper_prefix;
+  auto isAny(TokenKind k1) const -> bool { return is(k1); }
+  template <typename... Ts>
+  auto isAny(TokenKind k1, TokenKind k2, Ts... ks) const -> bool {
+    return is(k1) || isAny(k2, ks...);
+  }
+  template <typename... Ts>
+  auto isNot(TokenKind k1, Ts... ks) const -> bool {
+    return !isAny(k1, ks...);
   }
 
+  auto isBinaryOperator() const -> bool {
+    return kind_ == TokenKind::oper_binary_spaced ||
+           kind_ == TokenKind::oper_binary_unspaced;
+  }
+
+  /// 中缀 '=', '?', '->'
+  auto isBinaryOperatorLike() const -> bool {
+    if (isBinaryOperator()) {
+      return true;
+    }
+
+    switch (kind_) {
+      case TokenKind::equal:
+      case TokenKind::question_infix:
+      case TokenKind::arrow:
+        return true;
+      default:
+        return false;
+    }
+    llvm_unreachable("Unhandled case in switch!");
+  }
+
+  /// 后缀 '!' and '?'
+  auto isPostfixOperatorLike() const -> bool {
+    switch (kind_) {
+      case TokenKind::oper_postfix:
+      case TokenKind::exclaim_postfix:
+      case TokenKind::question_postfix:
+        return true;
+      default:
+        return false;
+    }
+    llvm_unreachable("Unhandled case in switch!");
+  }
+
+  auto isAnyOperator() const -> bool {
+    return isBinaryOperator() || kind_ == TokenKind::oper_postfix ||
+           kind_ == TokenKind::oper_prefix;
+  }
   auto isNotAnyOperator() const -> bool { return !isAnyOperator(); }
+
+  auto isEllipsis() const -> bool { return isAnyOperator() && text_ == "..."; }
+  auto isNotEllipsis() const -> bool { return !isEllipsis(); }
+
+  auto isTilde() const -> bool { return isAnyOperator() && text_ == "~"; }
 
   auto GetLocation() const -> llvm::SMLoc {
     return llvm::SMLoc::getFromPointer(text_.begin());
@@ -58,14 +99,6 @@ class Token {
   auto isAtStartOfLine() const -> bool { return at_start_of_line_; }
 
   void setAtStartOfLine(bool value) { at_start_of_line_ = value; }
-
-  auto isContextualKeyword(llvm::StringRef context_kw) const -> bool {
-    return is(TokenKind::identifier) && text_ == context_kw;
-  }
-
-  auto isContextualPunctuator(llvm::StringRef context_punc) const -> bool {
-    return is(TokenKind::oper_binary) && text_ == context_punc;
-  }
 
   auto isFollowingLParen() const -> bool {
     return !isAtStartOfLine() && kind_ == TokenKind::l_paren;
@@ -105,11 +138,25 @@ class Token {
     text_ = text;
   }
 
+  auto hasComment() const -> bool { return comment_length_ != 0; }
+
+ private:
+  auto trimComment() const -> llvm::StringRef {
+    assert(hasComment() && "No comment to trim");
+    llvm::StringRef raw(text_.begin() - comment_length_, comment_length_);
+    return raw.trim();
+  }
+
  private:
   // token的类型
   TokenKind kind_;
-  // 是否token是在行首
-  bool at_start_of_line_;
+  // token是否是在行首
+  bool at_start_of_line_ : 1;
+  unsigned escaped_identifier_ : 1;
+  unsigned multiline_string_ : 1;
+  // 字符串字面量的自定义分隔符的长度
+  unsigned custom_delimiter_len_ : 8;
+  unsigned comment_length_;
   // token所在的source buffer中实际的文本
   llvm::StringRef text_;
 };

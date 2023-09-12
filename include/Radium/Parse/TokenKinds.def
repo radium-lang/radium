@@ -1,98 +1,228 @@
-#ifndef RADIUM_KEYWORD
-#define RADIUM_KEYWORD(Name)
+/// Description: Defines the token kinds for the Radium language.
+/// 定义x-macro，用于生成token的类型。
+///
+
+#ifndef RADIUM_TOKEN
+#define RADIUM_TOKEN(Name)
 #endif
 
-// Keywords that start decls.
-RADIUM_KEYWORD(class)
-RADIUM_KEYWORD(destructor)
-RADIUM_KEYWORD(enum)
-RADIUM_KEYWORD(extension)
-RADIUM_KEYWORD(func)
-RADIUM_KEYWORD(import)
-RADIUM_KEYWORD(init)
-RADIUM_KEYWORD(let)
-RADIUM_KEYWORD(protocol)
-RADIUM_KEYWORD(static)
-RADIUM_KEYWORD(struct)
-RADIUM_KEYWORD(subscript)
-RADIUM_KEYWORD(typealias)
-RADIUM_KEYWORD(var)
+#ifndef RADIUM_KEYWORD
+#define RADIUM_KEYWORD(Name) RADIUM_TOKEN(kw_##Name)
+#endif
 
-// Statement keywords.
-RADIUM_KEYWORD(if)
-RADIUM_KEYWORD(do)
-RADIUM_KEYWORD(else)
-RADIUM_KEYWORD(for)
-RADIUM_KEYWORD(in)
-RADIUM_KEYWORD(while)
-RADIUM_KEYWORD(return)
-RADIUM_KEYWORD(break)
-RADIUM_KEYWORD(continue)
-RADIUM_KEYWORD(fallthrough)
-RADIUM_KEYWORD(switch)
-RADIUM_KEYWORD(case)
-RADIUM_KEYWORD(default)
-RADIUM_KEYWORD(where)
+#ifndef RADIUM_DECL_KEYWORD
+#define RADIUM_DECL_KEYWORD(Name) RADIUM_KEYWORD(Name)
+#endif
 
-RADIUM_KEYWORD(undef)       // This is only enabled when parsing .ril files.
-RADIUM_KEYWORD(ril)         // This is only enabled when parsing .ril files.
-RADIUM_KEYWORD(ril_stage)   // This is only enabled when parsing .ril files.
-RADIUM_KEYWORD(ril_vtable)  // This is only enabled when parsing .ril files.
-RADIUM_KEYWORD(ril_global)  // This is only enabled when parsing .ril files.
-RADIUM_KEYWORD(
-    ril_witness_table)  // This is only enabled when parsing .ril files.
+#ifndef RADIUM_STMT_KEYWORD
+#define RADIUM_STMT_KEYWORD(Name) RADIUM_KEYWORD(Name)
+#endif
 
-// Expression and type keywords.
-RADIUM_KEYWORD(DynamicSelf)
-RADIUM_KEYWORD(new)
-RADIUM_KEYWORD(as)
-RADIUM_KEYWORD(is)
-RADIUM_KEYWORD(super)
-RADIUM_KEYWORD(self)
-RADIUM_KEYWORD(Self)
-RADIUM_KEYWORD(weak)
-RADIUM_KEYWORD(unowned)
-RADIUM_KEYWORD(metatype)
-RADIUM_KEYWORD(__FILE__)
-RADIUM_KEYWORD(__LINE__)
-RADIUM_KEYWORD(__COLUMN__)
+#ifndef RADIUM_EXPR_KEYWORD
+#define RADIUM_EXPR_KEYWORD(Name) RADIUM_KEYWORD(Name)
+#endif
 
-// Pattern keywords.
-RADIUM_KEYWORD(_)
+#ifndef RADIUM_PAT_KEYWORD
+#define RADIUM_PAT_KEYWORD(Name) RADIUM_KEYWORD(Name)
+#endif
 
-#undef RADIUM_KEYWORD
+#ifndef RADIUM_RIL_KEYWORD
+#define RADIUM_RIL_KEYWORD(Name) RADIUM_KEYWORD(Name)
+#endif
+
+/// 以 # 开头的关键字
+#ifndef RADIUM_POUND_KEYWORD
+#define RADIUM_POUND_KEYWORD(Name) RADIUM_TOKEN(pound_##Name)
+#endif
+
+#ifndef RADIUM_POUND_OBJECT_LITERAL
+#define RADIUM_POUND_OBJECT_LITERAL(Name, Desc, Proto) \
+  RADIUM_POUND_KEYWORD(Name)
+#endif
+
+#ifndef RADIUM_POUND_CONFIG
+#define RADIUM_POUND_CONFIG(Name) RADIUM_POUND_KEYWORD(Name)
+#endif
+
+#ifndef RADIUM_POUND_DIRECTIVE_KEYWORD
+#define RADIUM_POUND_DIRECTIVE_KEYWORD(Name) RADIUM_POUND_KEYWORD(Name)
+#endif
+
+#ifndef RADIUM_POUND_COND_DIRECTIVE_KEYWORD
+#define RADIUM_POUND_COND_DIRECTIVE_KEYWORD(Name) \
+  RADIUM_POUND_DIRECTIVE_KEYWORD(Name)
+#endif
 
 #ifndef RADIUM_PUNCTUATOR
-#define RADIUM_PUNCTUATOR(Name, Str)
+#define RADIUM_PUNCTUATOR(Name, Str) RADIUM_TOKEN(Name)
 #endif
 
-// Punctuators.
+#ifndef RADIUM_LITERAL
+#define RADIUM_LITERAL(Name) RADIUM_TOKEN(Name)
+#endif
+
+#ifndef RADIUM_MISC
+#define RADIUM_MISC(Name) RADIUM_TOKEN(Name)
+#endif
+
+RADIUM_DECL_KEYWORD(associatedtype)
+RADIUM_DECL_KEYWORD(class)
+RADIUM_DECL_KEYWORD(deinit)
+RADIUM_DECL_KEYWORD(enum)
+RADIUM_DECL_KEYWORD(extension)
+RADIUM_DECL_KEYWORD(func)
+RADIUM_DECL_KEYWORD(import)
+RADIUM_DECL_KEYWORD(init)
+RADIUM_DECL_KEYWORD(inout)
+RADIUM_DECL_KEYWORD(let)
+RADIUM_DECL_KEYWORD(operator)
+RADIUM_DECL_KEYWORD(precedencegroup)
+RADIUM_DECL_KEYWORD(protocol)
+RADIUM_DECL_KEYWORD(struct)
+RADIUM_DECL_KEYWORD(subscript)
+RADIUM_DECL_KEYWORD(typealias)
+RADIUM_DECL_KEYWORD(var)
+RADIUM_DECL_KEYWORD(fileprivate)
+RADIUM_DECL_KEYWORD(internal)
+RADIUM_DECL_KEYWORD(private)
+RADIUM_DECL_KEYWORD(public)
+RADIUM_DECL_KEYWORD(static)
+RADIUM_STMT_KEYWORD(defer)
+RADIUM_STMT_KEYWORD(if)
+RADIUM_STMT_KEYWORD(guard)
+RADIUM_STMT_KEYWORD(do)
+RADIUM_STMT_KEYWORD(repeat)
+RADIUM_STMT_KEYWORD(else)
+RADIUM_STMT_KEYWORD(for)
+RADIUM_STMT_KEYWORD(in)
+RADIUM_STMT_KEYWORD(while)
+RADIUM_STMT_KEYWORD(return)
+RADIUM_STMT_KEYWORD(break)
+RADIUM_STMT_KEYWORD(continue)
+RADIUM_STMT_KEYWORD(fallthrough)
+RADIUM_STMT_KEYWORD(switch)
+RADIUM_STMT_KEYWORD(case)
+RADIUM_STMT_KEYWORD(default)
+RADIUM_STMT_KEYWORD(where)
+RADIUM_STMT_KEYWORD(catch)
+RADIUM_STMT_KEYWORD(throw)
+RADIUM_EXPR_KEYWORD(as)
+RADIUM_EXPR_KEYWORD(Any)
+RADIUM_EXPR_KEYWORD(false)
+RADIUM_EXPR_KEYWORD(is)
+RADIUM_EXPR_KEYWORD(nil)
+RADIUM_EXPR_KEYWORD(rethrows)
+RADIUM_EXPR_KEYWORD(super)
+RADIUM_EXPR_KEYWORD(self)
+RADIUM_EXPR_KEYWORD(Self)
+RADIUM_EXPR_KEYWORD(true)
+RADIUM_EXPR_KEYWORD(try)
+RADIUM_EXPR_KEYWORD(throws)
+RADIUM_PAT_KEYWORD(_)
 RADIUM_PUNCTUATOR(l_paren, "(")
 RADIUM_PUNCTUATOR(r_paren, ")")
 RADIUM_PUNCTUATOR(l_brace, "{")
 RADIUM_PUNCTUATOR(r_brace, "}")
 RADIUM_PUNCTUATOR(l_square, "[")
 RADIUM_PUNCTUATOR(r_square, "]")
-
+RADIUM_PUNCTUATOR(l_angle, "<")
+RADIUM_PUNCTUATOR(r_angle, ">")
 RADIUM_PUNCTUATOR(period, ".")
 RADIUM_PUNCTUATOR(period_prefix, ".")
 RADIUM_PUNCTUATOR(comma, ",")
+RADIUM_PUNCTUATOR(ellipsis, "...")
 RADIUM_PUNCTUATOR(colon, ":")
 RADIUM_PUNCTUATOR(semi, ";")
 RADIUM_PUNCTUATOR(equal, "=")
 RADIUM_PUNCTUATOR(at_sign, "@")
-RADIUM_PUNCTUATOR(ellipsis, "...")
-
+RADIUM_PUNCTUATOR(pound, "#")
 RADIUM_PUNCTUATOR(amp_prefix, "&")
 RADIUM_PUNCTUATOR(arrow, "->")
+RADIUM_PUNCTUATOR(backtick, "`")
+RADIUM_PUNCTUATOR(backslash, "\\")
+RADIUM_PUNCTUATOR(exclaim_postfix, "!")
+RADIUM_PUNCTUATOR(question_postfix, "?")
+RADIUM_PUNCTUATOR(question_infix, "?")
+RADIUM_PUNCTUATOR(string_quote, "\"")
+RADIUM_PUNCTUATOR(single_quote, "\'")
+RADIUM_PUNCTUATOR(multiline_string_quote, "\"\"\"")
+RADIUM_POUND_KEYWORD(keyPath)
+RADIUM_POUND_KEYWORD(line)
+RADIUM_POUND_KEYWORD(selector)
+RADIUM_POUND_KEYWORD(file)
+RADIUM_POUND_KEYWORD(fileID)
+RADIUM_POUND_KEYWORD(filePath)
+RADIUM_POUND_KEYWORD(column)
+RADIUM_POUND_KEYWORD(function)
+RADIUM_POUND_KEYWORD(dsohandle)
+RADIUM_POUND_KEYWORD(assert)
+RADIUM_POUND_DIRECTIVE_KEYWORD(sourceLocation)
+RADIUM_POUND_DIRECTIVE_KEYWORD(warning)
+RADIUM_POUND_DIRECTIVE_KEYWORD(error)
+RADIUM_POUND_COND_DIRECTIVE_KEYWORD(if)
+RADIUM_POUND_COND_DIRECTIVE_KEYWORD(else)
+RADIUM_POUND_COND_DIRECTIVE_KEYWORD(elseif)
+RADIUM_POUND_COND_DIRECTIVE_KEYWORD(endif)
+RADIUM_POUND_CONFIG(available)
+RADIUM_POUND_CONFIG(unavailable)
+RADIUM_POUND_OBJECT_LITERAL(fileLiteral, "file reference",
+                            ExpressibleByFileReferenceLiteral)
+RADIUM_POUND_OBJECT_LITERAL(imageLiteral, "image", ExpressibleByImageLiteral)
+RADIUM_POUND_OBJECT_LITERAL(colorLiteral, "color", ExpressibleByColorLiteral)
+RADIUM_POUND_CONFIG(_hasSymbol)
+RADIUM_LITERAL(integer_literal)
+RADIUM_LITERAL(floating_literal)
+RADIUM_LITERAL(string_literal)
+RADIUM_LITERAL(regex_literal)
+RADIUM_MISC(unknown)
+RADIUM_MISC(identifier)
+RADIUM_MISC(oper_binary_unspaced)
+RADIUM_MISC(oper_binary_spaced)
+RADIUM_MISC(oper_postfix)
+RADIUM_MISC(oper_prefix)
+RADIUM_MISC(dollarident)
+RADIUM_MISC(contextual_keyword)
+RADIUM_MISC(raw_string_delimiter)
+RADIUM_MISC(string_segment)
+RADIUM_MISC(string_interpolation_anchor)
+RADIUM_MISC(kw_yield)
+RADIUM_MISC(kw_discard)
+RADIUM_MISC(kw_then)
 
-RADIUM_PUNCTUATOR(exclaim_postfix, "!")  // if left-bound
-
-RADIUM_PUNCTUATOR(question_postfix, "?")  // if left-bound
-RADIUM_PUNCTUATOR(question_infix, "?")    // if not left-bound
+RADIUM_RIL_KEYWORD(undef)
+RADIUM_RIL_KEYWORD(ril)
+RADIUM_RIL_KEYWORD(ril_stage)
+RADIUM_RIL_KEYWORD(ril_property)
+RADIUM_RIL_KEYWORD(ril_vtable)
+RADIUM_RIL_KEYWORD(ril_moveonlydeinit)
+RADIUM_RIL_KEYWORD(ril_global)
+RADIUM_RIL_KEYWORD(ril_witness_table)
+RADIUM_RIL_KEYWORD(ril_default_witness_table)
+RADIUM_RIL_KEYWORD(ril_differentiability_witness)
+RADIUM_RIL_KEYWORD(ril_coverage_map)
+RADIUM_RIL_KEYWORD(ril_scope)
 
 RADIUM_PUNCTUATOR(sil_dollar, "$")       // Only in RIL mode.
-RADIUM_PUNCTUATOR(sil_pound, "#")        // Only in RIL mode.
 RADIUM_PUNCTUATOR(sil_exclamation, "!")  // Only in RIL mode.
 
+RADIUM_MISC(eof)
+RADIUM_MISC(code_complete)
+RADIUM_MISC(sil_local_name)  // %42 in RIL mode.
+RADIUM_MISC(comment)
+
+#undef RADIUM_TOKEN
+#undef RADIUM_KEYWORD
+#undef RADIUM_SWIFT_KEYWORD
+#undef RADIUM_DECL_KEYWORD
+#undef RADIUM_STMT_KEYWORD
+#undef RADIUM_EXPR_KEYWORD
+#undef RADIUM_PAT_KEYWORD
+#undef RADIUM_RIL_KEYWORD
+#undef RADIUM_POUND_KEYWORD
+#undef RADIUM_POUND_OBJECT_LITERAL
+#undef RADIUM_POUND_CONFIG
+#undef RADIUM_POUND_DIRECTIVE_KEYWORD
+#undef RADIUM_POUND_COND_DIRECTIVE_KEYWORD
 #undef RADIUM_PUNCTUATOR
+#undef RADIUM_LITERAL
+#undef RADIUM_MISC
