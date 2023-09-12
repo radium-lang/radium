@@ -280,7 +280,7 @@ class Lexer {
 
   void formToken(TokenKind kind, const char* tok_start);
 
-  void skipToEndOfLine();
+  void skipToEndOfLine(bool eat_newline);
 
   // 跳到//注释行末尾。
   void skipSlashSlashComment(bool eat_newline);
@@ -310,7 +310,10 @@ class Lexer {
 
   auto lexUnknown() -> bool;
 
+  /// 用于处理编辑器占位符，占位符的格式是<# ... #>，占位符不允许嵌套。
   void tryLexEditorPlaceholder();
+
+  auto getNulCharacterKind(const char* ptr) const -> NulCharacterKind;
 
  private:
   /// lang opt
