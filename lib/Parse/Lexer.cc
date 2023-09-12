@@ -1,5 +1,7 @@
 #include "Radium/Parse/Lexer.h"
 
+#include <llvm-15/llvm/ADT/StringRef.h>
+
 #include "Radium/AST/Identifier.h"
 #include "Radium/Basic/Fallthrough.h"
 #include "Radium/Basic/SourceManager.h"
@@ -221,7 +223,16 @@ void Lexer::formToken(TokenKind kind, const char* tok_start) {
       tok_start >= artificial_eof_) {
     kind = TokenKind::eof;
   }
-  next_token_.setToken(kind, StringRef(tok_start, cur_ptr_ - tok_start));
+  unsigned comment_length = 0;
+  if (retain_comments_ == CommentRetentionMode::AttachToNextToken) {
+    if (comment_start_) {
+      comment_length = cur_ptr_ - comment_start_;
+    }
+  }
+
+  llvm::StringRef token_text{tok_start,
+                             static_cast<size_t>(cur_ptr_ - tok_start)};
+  next_token_.setToken(kind, token_text, comment_length);
 }
 
 auto Lexer::getStateForBeginningOfTokenLoc(SourceLoc loc) const
@@ -434,135 +445,326 @@ void Lexer::lexIdentifier() {
   return formToken(Kind, TokStart);
 }
 
+auto Lexer::lexTrivia(bool is_for_trailing_trivia, const char* all_trivia_start)
+    -> llvm::StringRef {
+  comment_start_ = nullptr;
+
+restart:
+  const char* trivia_start = cur_ptr_;
+
+  switch (*cur_ptr++) {
+    case '\n':  // 换行字符
+      if (is_for_trailing_trivia) {
+        break;
+      }
+      next_token_.setAtStartOfLine(true);
+      goto restart;
+    case '\r':  // 回车字符
+      if (is_for_trailing_trivia) {
+        break;
+      }
+      next_token_.setAtStartOfLine(true);
+      if (cur_ptr_[0] == '\n') {
+        ++cur_ptr_;
+      }
+      goto restart;
+    case ' ':   // 空格符
+    case '\t':  // 制表符
+    case '\v':  // 垂直制表符
+    case '\f':  // 换页符
+      goto restart;
+    case '/':  // 注释的开始
+      if (is_for_trailing_trivia || isKeepingComments()) {
+        break;
+      } else if (*cur_ptr_ == '/') {
+        // 跳过'//'注释。
+        if (comment_start_ == nullptr) {
+          comment_start_ = cur_ptr - 1;
+        }
+        skipSlashSlashComment(true);
+        goto restart;
+      } else if (*cur_ptr_ == '*') {
+        // 跳过'/*'注释。
+        if (comment_start_ == nullptr) {
+          comment_start_ = cur_ptr - 1;
+        }
+        skipSlashStarComment();
+        goto restart;
+      }
+      break;
+    case '#':  // hashbang
+      if (trivia_start == comment_start_ && *cur_ptr_ == '!') {
+        --cur_ptr_;
+        if (!is_hashbang_allowed_) {
+          // diag
+        }
+        skipHashbang(false);
+        goto restart;
+      }
+    case '<':  // '<'和'>'是在冲突标记下的特殊字符。
+    case '>':
+      if (tryLexConflictMarker()) {
+        goto restart;
+      }
+      break;
+    case 0:  // 用于处理空字符（null）情况。
+      switch (getNulCharacterKind(cur_ptr_ - 1)) {
+        case NulCharacterKind::Embedded:
+          // Embedded NUL characters are lexed as a single space.
+          goto restart;
+        case NulCharacterKind::CodeCompletion:
+        case NulCharacterKind::BufferEnd:
+          break;
+      }
+      break;
+      // clang-format off
+    case (char)-1: case (char)-2:
+    case '@': case '{': case '[': case '(': case '}': case ']': case ')':
+    case ',': case ';': case ':': case '\\': case '$':
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': case '8': case '9':
+    case '"': case '\'': case '`':
+    // Start of identifiers.
+    case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
+    case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
+    case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
+    case 'V': case 'W': case 'X': case 'Y': case 'Z':
+    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
+    case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
+    case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+    case 'v': case 'w': case 'x': case 'y': case 'z':
+    case '_':
+    // Start of operators.
+    case '%': case '!': case '?': case '=':
+    case '-': case '+': case '*':
+    case '&': case '|': case '^': case '~': case '.':
+      break;
+      // clang-format on
+    default:
+      const char* tmp = cur_ptr - 1;
+      // 确定前一个字符是否是标识符的有效起始字符。
+      // 如果是有效的标识符起始字符，那么这个分支会终止并继续词法分析。
+      if (advanceIfValidStartOfIdentifier(tmp, buffer_end_)) {
+        break;
+      }
+      // 是否是操作符的有效起始字符。
+      if (advanceIfValidStartOfOperator(tmp, buffer_end_)) {
+        break;
+      }
+
+      bool should_tokenize = lexUnknown();
+      if (should_tokenize) {
+        cur_ptr_ = tmp;
+        size_t length = cur_ptr_ - all_trivia_start;
+        return llvm::StringRef(all_trivia_start, length);
+      }
+      goto restart;
+  }
+  --cur_ptr_;
+  size_t length = cur_ptr_ - all_trivia_start;
+  return llvm::StringRef(all_trivia_start, length);
+}
+
 void Lexer::lexImpl() {
+  // 当前的指针cur_ptr_（可能表示当前正在解析的位置）在有效的范围内，
+  // 即它必须在整个代码缓冲区的起始和结束之间。
   assert(cur_ptr_ >= buffer_start_ && cur_ptr_ <= buffer_end_ &&
          "Current pointer out of range!");
 
-  next_token_.setAtStartOfLine(cur_ptr_ == buffer_start_);
+  const char* leading_trivial_start = cur_ptr_;
+  if (cur_ptr_ == buffer_start_) {
+    if (buffer_start_ < content_start_) {
+      size_t bom_len = content_start_ - buffer_start_;
+      assert(bom_len == 3 && "UTF-8 BOM is 3 bytes");
+      cur_ptr_ += bom_len;
+    }
+    next_token_.setAtStartOfLine(true);
+  } else {
+    next_token_.setAtStartOfLine(false);
+  }
 
-  const char* token_start = cur_ptr_;
-  switch (*cur_ptr_++) {
+  // 跳过不影响语法的元素。
+  lexTrivia(false, leading_trivial_start);
+
+  const char* tok_start = cur_ptr_;
+
+  if (lexer_cut_off_point_ && cut_ptr_ >= lexer_cut_off_point_) {
+    return formToken(TokenKind::eof, tok_start);
+  }
+
+  switch (*cur_ptr++) {
+    default: {
+      const char* tmp = cur_ptr_ - 1;
+      if (advanceIfValidStartOfIdentifier(tmp, buffer_end_)) {
+        return lexIdentifier();
+      }
+      if (advanceIfValidStartOfOperator(tmp, buffer_end_)) {
+        return lexOperatorIdentifier();
+      }
+      bool should_tokenize = lexUnknown();
+      assert(should_tokenize &&
+             "Invalid UTF-8 sequence should be eaten by lexTrivia as "
+             "LeadingTrivia");
+      (void)should_tokenize;
+      return formToken(TokenKind::unknown, tok_start);
+    }
+
     case '\n':
     case '\r':
-      next_token_.setAtStartOfLine(true);
-      return formToken(TokenKind::new_line, token_start);
+      llvm_unreachable(
+          "Newlines should be eaten by lexTrivia as LeadingTrivia");
 
     case ' ':
     case '\t':
     case '\f':
     case '\v':
-      return formToken(TokenKind::whitespace, token_start);
+      llvm_unreachable(
+          "Whitespaces should be eaten by lexTrivia as LeadingTrivia");
 
+    case (char)-1:  // utf16_bom_marker
+    case (char)-2:
+      cur_ptr_ = buffer_end_;
+      return formToken(TokenKind::unknown, tok_start);
+
+    case 0:
+      switch (getNulCharacterKind(cur_ptr_ - 1)) {
+        case NulCharacterKind::CodeCompletion:
+          while (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_))
+            ;
+          return formToken(TokenKind::code_complete, tok_start);
+
+        case NulCharacterKind::BufferEnd:
+          --cur_ptr_;
+          // Return EOF.
+          return formToken(TokenKind::eof, tok_start);
+
+        case NulCharacterKind::Embedded:
+          llvm_unreachable(
+              "Embedded nul should be eaten by lexTrivia as LeadingTrivia");
+      }
+
+    case '@':
+      return formToken(TokenKind::at_sign, tok_start);
     case '{':
-      return formToken(TokenKind::l_brace, token_start);
-    case '}':
-      return formToken(TokenKind::r_brace, token_start);
-    case '(':
-      return formToken(TokenKind::l_paren, token_start);
-    case ')':
-      return formToken(TokenKind::r_paren, token_start);
+      return formToken(TokenKind::l_brace, tok_start);
     case '[':
-      return formToken(TokenKind::l_square, token_start);
+      return formToken(TokenKind::l_square, tok_start);
+    case '(':
+      return formToken(TokenKind::l_paren, tok_start);
+    case '}':
+      return formToken(TokenKind::r_brace, tok_start);
     case ']':
-      return formToken(TokenKind::r_square, token_start);
+      return formToken(TokenKind::r_square, tok_start);
+    case ')':
+      return formToken(TokenKind::r_paren, tok_start);
+
     case ',':
-      return formToken(TokenKind::comma, token_start);
+      return formToken(TokenKind::comma, tok_start);
     case ';':
-      return formToken(TokenKind::semi, token_start);
+      return formToken(TokenKind::semi, tok_start);
     case ':':
-      return formToken(TokenKind::colon, token_start);
+      return formToken(TokenKind::colon, tok_start);
+    case '\\':
+      return formToken(TokenKind::backslash, tok_start);
+
+    case '#': {
+      // 处理原始字符串字面量。
+      if (unsigned custom_delimiter_len = advanceIfCustomDelimiter(cur_ptr_)) {
+        return lexStringLiteral(custom_delimiter_len);
+      }
+
+      // 可能是正则表达式。
+      if (tryLexRegexLiteral(tok_start)) {
+        return;
+      }
+
+      // magic pound literal：通常指的是以井号 # 开头的特殊字面量
+      return lexHash();
+    }
+    case '/':
+      if (cur_ptr_[0] == '/') {  // "//"
+        skipSlashSlashComment(true);
+        assert(
+            isKeepingComments() &&
+            "Non token comment should be eaten by lexTrivia as LeadingTrivia");
+        return formToken(TokenKind::comment, tok_start);
+      }
+      if (cur_ptr_[0] == '*') {  // "/*"
+        skipSlashStarComment();
+        assert(
+            isKeepingComments() &&
+            "Non token comment should be eaten by lexTrivia as LeadingTrivia");
+        return formToken(TokenKind::comment, tok_start);
+      }
+      if (tryLexRegexLiteral(tok_start)) {
+        return;
+      }
+      // 最后才判断是否是操作符。
+      return lexOperatorIdentifier();
+    case '%':  // local RIL value
+      // lex %[0-9a-zA-Z_]+
+      if (in_ril_body_ && clang::isAsciiIdentifierContinue(cur_ptr_[0])) {
+        do {
+          ++cur_ptr_;
+        } while (clang::isAsciiIdentifierContinue(cur_ptr_[0]));
+
+        return formToken(TokenKind::ril_local_name, tok_start);
+      }
+      return lexOperatorIdentifier();
+
+    case '!':
+      if (in_ril_body_) {
+        return formToken(TokenKind::ril_exclamation, tok_start);
+      }
+      if (isLeftBound(tok_start, content_start_)) {
+        return formToken(TokenKind::exclaim_postfix, tok_start);
+      }
+      return lexOperatorIdentifier();
+
     case '?':
-      return formToken(TokenKind::question_postfix, token_start);
+      if (isLeftBound(tok_start, content_start_)) {
+        return formToken(TokenKind::question_postfix, tok_start);
+      }
+      return lexOperatorIdentifier();
 
-    case '=':
-    case '-':
-    case '+':
-    case '*':
     case '<':
+      if (cur_ptr_[0] == '#') {
+        return tryLexEditorPlaceholder();
+      }
+      return lexOperatorIdentifier();
     case '>':
-    case '&':
-    case '|':
-    case '^':
-    case '~':
       return lexOperatorIdentifier();
 
-    case '.':
+      // clang-format off
+    case '=': case '-': case '+': case '*':
+    case '&': case '|':  case '^': case '~': case '.':
       return lexOperatorIdentifier();
 
-    case 'A':
-    case 'B':
-    case 'C':
-    case 'D':
-    case 'E':
-    case 'F':
-    case 'G':
-    case 'H':
-    case 'I':
-    case 'J':
-    case 'K':
-    case 'L':
-    case 'M':
-    case 'N':
-    case 'O':
-    case 'P':
-    case 'Q':
-    case 'R':
-    case 'S':
-    case 'T':
-    case 'U':
-    case 'V':
-    case 'W':
-    case 'X':
-    case 'Y':
-    case 'Z':
-    case 'a':
-    case 'b':
-    case 'c':
-    case 'd':
-    case 'e':
-    case 'f':
-    case 'g':
-    case 'h':
-    case 'i':
-    case 'j':
-    case 'k':
-    case 'l':
-    case 'm':
-    case 'n':
-    case 'o':
-    case 'p':
-    case 'q':
-    case 'r':
-    case 's':
-    case 't':
-    case 'u':
-    case 'v':
-    case 'w':
-    case 'x':
-    case 'y':
-    case 'z':
+    case 'A': case 'B': case 'C': case 'D': case 'E': case 'F': case 'G':
+    case 'H': case 'I': case 'J': case 'K': case 'L': case 'M': case 'N':
+    case 'O': case 'P': case 'Q': case 'R': case 'S': case 'T': case 'U':
+    case 'V': case 'W': case 'X': case 'Y': case 'Z':
+    case 'a': case 'b': case 'c': case 'd': case 'e': case 'f': case 'g':
+    case 'h': case 'i': case 'j': case 'k': case 'l': case 'm': case 'n':
+    case 'o': case 'p': case 'q': case 'r': case 's': case 't': case 'u':
+    case 'v': case 'w': case 'x': case 'y': case 'z':
     case '_':
       return lexIdentifier();
 
     case '$':
       return lexDollarIdent();
 
-    case '0':
-    case '1':
-    case '2':
-    case '3':
-    case '4':
-    case '5':
-    case '6':
-    case '7':
-    case '8':
-    case '9':
+    case '0': case '1': case '2': case '3': case '4':
+    case '5': case '6': case '7': case '8': case '9':
       return lexNumber();
 
     case '\'':
-      return lexCharacterLiteral();
     case '"':
       return lexStringLiteral();
+
+    case '`':
+      return lexEscapedIdentifier();
+      // clang-format on
   }
 }
 

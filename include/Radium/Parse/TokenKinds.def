@@ -202,12 +202,12 @@ RADIUM_RIL_KEYWORD(ril_differentiability_witness)
 RADIUM_RIL_KEYWORD(ril_coverage_map)
 RADIUM_RIL_KEYWORD(ril_scope)
 
-RADIUM_PUNCTUATOR(sil_dollar, "$")       // Only in RIL mode.
-RADIUM_PUNCTUATOR(sil_exclamation, "!")  // Only in RIL mode.
+RADIUM_PUNCTUATOR(ril_dollar, "$")       // Only in RIL mode.
+RADIUM_PUNCTUATOR(ril_exclamation, "!")  // Only in RIL mode.
 
 RADIUM_MISC(eof)
 RADIUM_MISC(code_complete)
-RADIUM_MISC(sil_local_name)  // %42 in RIL mode.
+RADIUM_MISC(ril_local_name)  // %42 in RIL mode.
 RADIUM_MISC(comment)
 
 #undef RADIUM_TOKEN

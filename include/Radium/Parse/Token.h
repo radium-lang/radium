@@ -17,6 +17,8 @@ enum class TokenKind : uint8_t {
   num_tokens,
 };
 
+auto getTokenText(TokenKind kind) -> llvm::StringRef;
+
 class Token {
  public:
   Token(TokenKind kind, llvm::StringRef text, unsigned comment_length = 0)
@@ -133,9 +135,20 @@ class Token {
 
   auto getLength() const -> unsigned { return text_.size(); }
 
-  void setToken(TokenKind kind, llvm::StringRef text) {
+  void setToken(TokenKind kind, llvm::StringRef text, unsigned comment_length) {
     kind_ = kind;
     text_ = text;
+    comment_length_ = comment_length;
+    escaped_identifier_ = false;
+    multiline_string_ = false;
+    custom_delimiter_len_ = 0;
+  }
+
+  auto getCommentStart() const -> SourceLoc {
+    if (comment_length_ == 0) {
+      return SourceLoc();
+    }
+    return SourceLoc(llvm::SMLoc::getFromPointer(trimComment().begin()));
   }
 
   auto hasComment() const -> bool { return comment_length_ != 0; }
