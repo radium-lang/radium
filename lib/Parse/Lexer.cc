@@ -618,7 +618,28 @@ void Lexer::lexOperatorIdentifier() {
     if (*cur_ptr_ == '.' && *tok_start != '.') {
       break;
     }
+
+    // 如果此时正在lex一个`/.../`正则字面量，则此时不需要考虑`/`字符。
+    if (forward_slash_regex_mode_ != LexerForwardSlashRegexMode::None &&
+        *cur_ptr_ == '/') {
+      break;
+    }
+  } while (advanceIfValidContinuationOfOperator(cur_ptr_, buffer_end_));
+
+  if (cur_ptr_ - tok_start > 2) {
+    // 如果为注释。
+    for (const auto *ptr = tok_start + 1; ptr != cur_ptr_ - 1; ++ptr) {
+      if (ptr[0] == '/' && (ptr[1] == '/' || ptr[1] == '*')) {
+        cur_ptr_ = ptr;
+        break;
+      }
+    }
   }
+
+  bool left_bound = isLeftBound(tok_start, content_start_);
+  bool right_bound = isRightBound(cur_ptr_, left_bound, code_completion_ptr_);
+
+
 }
 
 auto Lexer::lexTrivia(bool is_for_trailing_trivia, const char* all_trivia_start)
@@ -679,7 +700,7 @@ restart:
       }
     case '<':  // '<'和'>'是在冲突标记下的特殊字符。
     case '>':
-      if (tryLexConflictMarker()) {
+      if (tryLexConflictMarker(false)) {
         goto restart;
       }
       break;
@@ -764,7 +785,7 @@ void Lexer::lexImpl() {
 
   const char* tok_start = cur_ptr_;
 
-  if (lexer_cut_off_point_ && cut_ptr_ >= lexer_cut_off_point_) {
+  if (lexer_cut_off_point_ && cur_ptr_ >= lexer_cut_off_point_) {
     return formToken(TokenKind::eof, tok_start);
   }
 
@@ -928,7 +949,7 @@ void Lexer::lexImpl() {
       return lexIdentifier();
 
     case '$':
-      return lexDollarIdent();
+      return lexDollarIdentifier();
 
     case '0': case '1': case '2': case '3': case '4':
     case '5': case '6': case '7': case '8': case '9':

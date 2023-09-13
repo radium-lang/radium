@@ -110,9 +110,6 @@ class Lexer {
   };
 
  private:
-  Lexer(const Lexer&) = delete;
-  void operator=(const Lexer&) = delete;
-
   struct PrincipalTag {};
 
   Lexer(const PrincipalTag&, const LangOptions& lang_opts,
@@ -137,6 +134,9 @@ class Lexer {
   /// 创建一个子词法分析器，该子词法分析器从同一缓冲区进行词法分析，
   /// 但扫描缓冲区的子范围。
   Lexer(const Lexer& parent, State begin_state, State end_state);
+
+  Lexer(const Lexer&) = delete;
+  void operator=(const Lexer&) = delete;
 
   // 如果此词法分析器将生成code completion token，则返回true。
   auto isCodeCompletion() const -> bool {
@@ -287,11 +287,13 @@ class Lexer {
   void skipHashbang(bool eat_newline);
 
   void skipSlashStarComment();
+  void lexHash();
   void lexIdentifier();
   void lexDollarIdentifier();
   void lexOperatorIdentifier();
   void lexHexNumber();
   void lexNumber();
+  void lexEscapedIdentifier();
 
   /// 跳过不影响语法的元素并返回在StringRef中跳过的字符。
   /// `is_for_trailing_trivia`是一个布尔标志，用于指示
@@ -302,7 +304,9 @@ class Lexer {
   auto lexCharacter(const char*& cur_ptr, bool stop_at_double_quote,
                     bool emit_diagnostics) -> unsigned;
   void lexCharacterLiteral();
-  void lexStringLiteral();
+  void lexStringLiteral(unsigned custom_delimiter_len = 0);
+
+  auto tryLexRegexLiteral(const char* tok_start) -> bool;
 
   auto tryLexConflictMarker(bool eat_newline) -> bool;
 

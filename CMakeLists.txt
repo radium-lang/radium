@@ -19,24 +19,6 @@ option(RADIUM_OPT_BUILD_UNITTESTS "Build all radium unittests" ON)
 add_compile_options(-fno-rtti)
 
 #------------------------------------------------------------
-# CMake helpers:
-include(GNUInstallDirs)
-include(CMakePackageConfigHelpers)
-
-include(CTest)
-
-include_directories(include)
-
-# Create the RADIUM C++ library
-set(radium_SRCS)
-set(RADIUM_BASIC_SRCS)
-set(RADIUM_AST_SRCS)
-
-set(STATIC_LIB_NAME ${PROJECT_NAME})
-set(RADIUM_BASIC_LIB ${PROJECT_NAME}Basic)
-set(RADIUM_AST_LIB ${PROJECT_NAME}AST)
-
-#------------------------------------------------------------
 ##### LLVM BEGIN #####
 # apt install llvm-15-dev
 set(LLVM_DIR /usr/lib/llvm-15/lib/cmake/llvm)
@@ -50,6 +32,26 @@ add_definitions(${LLVM_DEFINITIONS})
 ##### LLVM END   #####
 
 #------------------------------------------------------------
+# CMake helpers:
+include(GNUInstallDirs)
+include(CMakePackageConfigHelpers)
+
+include(CTest)
+
+include_directories(include)
+
+# Create the RADIUM C++ library
+set(radium_SRCS)
+set(RADIUM_BASIC_SRCS)
+set(RADIUM_PARSE_SRCS)
+set(RADIUM_AST_SRCS)
+
+set(STATIC_LIB_NAME ${PROJECT_NAME})
+set(RADIUM_BASIC_LIB ${PROJECT_NAME}Basic)
+set(RADIUM_PARSE_LIB ${PROJECT_NAME}Parse)
+set(RADIUM_AST_LIB ${PROJECT_NAME}AST)
+
+#------------------------------------------------------------
 ##### radiumBasic lib begin #####
 file(GLOB_RECURSE LIB_BASIC_PATH
     ./lib/Basic/*.cc
@@ -61,16 +63,27 @@ target_link_libraries(${RADIUM_BASIC_LIB}
 )
 ##### radiumBasic lib end   #####
 
-##### radiumAST lib begin #####
-file(GLOB_RECURSE LIB_AST_PATH
-    ./lib/AST/*.cc
+##### radiumParse lib begin #####
+file(GLOB_RECURSE LIB_PARSE_PATH
+    ./lib/Parse/*.cc
   )
-list(APPEND RADIUM_AST_SRCS ${LIB_AST_PATH})
-add_library(${RADIUM_AST_LIB} STATIC ${RADIUM_AST_SRCS})
-target_link_libraries(${RADIUM_AST_LIB}
+list(APPEND RADIUM_PARSE_SRCS ${LIB_PARSE_PATH})
+add_library(${RADIUM_PARSE_LIB} STATIC ${RADIUM_PARSE_SRCS})
+target_link_libraries(${RADIUM_PARSE_LIB}
   LLVMSupport
 )
-##### radiumAST lib end   #####
+##### radiumParse lib end   #####
+
+# ##### radiumAST lib begin #####
+# file(GLOB_RECURSE LIB_AST_PATH
+#     ./lib/AST/*.cc
+#   )
+# list(APPEND RADIUM_AST_SRCS ${LIB_AST_PATH})
+# add_library(${RADIUM_AST_LIB} STATIC ${RADIUM_AST_SRCS})
+# target_link_libraries(${RADIUM_AST_LIB}
+#   LLVMSupport
+# )
+# ##### radiumAST lib end   #####
 
 #------------------------------------------------------------
 
