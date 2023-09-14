@@ -69,6 +69,10 @@ class VarDecl : public Decl {
   Expr* init_;
 };
 
+class ParamDecl : public Decl {
+
+};
+
 }  // namespace Radium
 
 #endif  // RADIUM_AST_DECL_H
