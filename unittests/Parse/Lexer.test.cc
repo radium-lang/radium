@@ -22,7 +22,26 @@ class LexerTest : public ::testing::Test {
     } while (tokens.back().isNot(TokenKind::eof));
     return tokens;
   }
+
+  void checkLex(llvm::StringRef source, bool keep_comments = false,
+                bool keep_eof = false) {
+    unsigned buffer_id = src_mgr_.addMemBufferCopy(source);
+    std::vector<Token> tokens;
+    tokens = tokenizeAndKeepEOF(buffer_id);
+    for (unsigned i = 0, e = tokens.size(); i != e; ++i) {
+      std::cout << "[TokenKind: "
+                << std::string(getTokenText(tokens[i].getKind()))
+                << ", i = " << i << "]\n";
+    }
+  }
 };
+
+TEST_F(LexerTest, TokenizeAndKeepEOF) {
+  const char* source =
+      "// Blah\n"
+      "(/*yo*/)";
+  checkLex(source);
+}
 
 }  // namespace
 }  // namespace Radium

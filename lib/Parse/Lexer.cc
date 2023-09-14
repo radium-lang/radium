@@ -1,9 +1,13 @@
 #include "Radium/Parse/Lexer.h"
 
+#include <llvm-15/llvm/ADT/StringRef.h>
+#include <llvm-15/llvm/ADT/StringSwitch.h>
+
 #include "Radium/AST/Identifier.h"
 #include "Radium/Basic/Fallthrough.h"
 #include "Radium/Basic/LangOptions.h"
 #include "Radium/Basic/SourceManager.h"
+#include "Radium/Parse/Token.h"
 #include "clang/Basic/CharInfo.h"
 #include "llvm/ADT/SmallString.h"
 #include "llvm/ADT/StringSwitch.h"
@@ -173,6 +177,7 @@ static auto advanceToEndOfLine(const char*& cur_ptr, const char* buffer_end,
   }
 }
 
+/// 判断一个给定的Unicode码点是否是一个有效的标识符继续字符。
 static auto isValidIdentifierContinuationCodePoint(uint32_t c) -> bool {
   if (c < 0x80) {
     return clang::isAsciiIdentifierContinue(c, /*dollar*/ true);
@@ -292,6 +297,7 @@ static auto advanceIfCustomDelimiter(const char*& cur_ptr) -> unsigned {
 /// 用于确定操作符或token是否在其左侧有边界。
 static auto isLeftBound(const char* tok_begin, const char* buffer_begin)
     -> bool {
+  // 如果token位于缓存区的开始，则没有左边界。
   if (tok_begin == buffer_begin) {
     return false;
   }
@@ -601,6 +607,84 @@ void Lexer::tryLexEditorPlaceholder() {
   lexOperatorIdentifier();
 }
 
+auto Lexer::isOperator(llvm::StringRef string) -> bool {
+  if (string.empty()) {
+    return false;
+  }
+  const char* p = string.data();
+  const char* end = string.end();
+  if (!advanceIfValidStartOfOperator(p, end)) {
+    return false;
+  }
+  while (p < end && advanceIfValidContinuationOfOperator(p, end))
+    ;
+  return p == end;
+}
+
+auto Lexer::kindOfIdentifier(llvm::StringRef identifier, bool in_ril_mode)
+    -> TokenKind {
+#define RADIUM_RIL_KEYWORD(Name)
+#define RADIUM_KEYWORD(Name) \
+  if (identifier == #Name)   \
+    return TokenKind::kw_##Name;
+#include "Radium/Parse/TokenKinds.def"
+
+  if (in_ril_mode) {
+#define RADIUM_RIL_KEYWORD(Name) \
+  if (identifier == #Name)       \
+    return TokenKind::kw_##Name;
+#include "Radium/Parse/TokenKinds.def"
+  }
+  return TokenKind::identifier;
+}
+
+/// [a-zA-Z_][a-zA-Z0-9_$]*
+void Lexer::lexIdentifier() {
+  const char* tok_start = cur_ptr_ - 1;
+  cur_ptr_ = tok_start;
+  bool did_start = advanceIfValidStartOfIdentifier(cur_ptr_, buffer_end_);
+  assert(did_start && "Unexpected identifier start");
+  (void)did_start;
+
+  while (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_))
+    ;
+
+  TokenKind kind =
+      kindOfIdentifier(llvm::StringRef(tok_start, cur_ptr_ - tok_start),
+                       lex_mode_ == LexerMode::RIL);
+  return formToken(kind, tok_start);
+}
+
+/// 用于处理解析以`#`开头的token。
+void Lexer::lexHash() {
+  const char* tok_start = cur_ptr_ - 1;  // #
+
+  // 扫描#后面的[a-zA-Z]+
+  const char* tmp_ptr = cur_ptr_;
+  if (clang::isAsciiIdentifierStart(*tmp_ptr)) {
+    do {
+      ++tmp_ptr;
+    } while (clang::isAsciiIdentifierContinue(*tmp_ptr));
+  }
+
+  // 映射字符序列到token类型。
+  TokenKind kind = llvm::StringSwitch<TokenKind>(
+                       llvm::StringRef(cur_ptr_, tmp_ptr - cur_ptr_))
+#define RADIUM_POUND_KEYWORD(id) .Case(#id, TokenKind::pound_##id)
+#include "Radium/Parse/TokenKinds.def"
+                       .Default(TokenKind::pound);
+
+  // 处理特定的类型。
+  // TODO: pound_assert
+
+  if (kind == TokenKind::pound) {
+    return formToken(TokenKind::pound, tok_start);
+  }
+
+  cur_ptr_ = tmp_ptr;
+  return formToken(kind, tok_start);
+}
+
 /// 识别和处理由标点符号构成的操作符标识符。
 void Lexer::lexOperatorIdentifier() {
   const char* tok_start = cur_ptr_ - 1;
@@ -628,7 +712,7 @@ void Lexer::lexOperatorIdentifier() {
 
   if (cur_ptr_ - tok_start > 2) {
     // 如果为注释。
-    for (const auto *ptr = tok_start + 1; ptr != cur_ptr_ - 1; ++ptr) {
+    for (const auto* ptr = tok_start + 1; ptr != cur_ptr_ - 1; ++ptr) {
       if (ptr[0] == '/' && (ptr[1] == '/' || ptr[1] == '*')) {
         cur_ptr_ = ptr;
         break;
@@ -636,10 +720,326 @@ void Lexer::lexOperatorIdentifier() {
     }
   }
 
+  // 用于确定操作符是左边界还是右边界。
   bool left_bound = isLeftBound(tok_start, content_start_);
   bool right_bound = isRightBound(cur_ptr_, left_bound, code_completion_ptr_);
 
+  // 匹配多种保留的操作符，包括单字符操作符和两字符操作符。
+  if (cur_ptr_ - tok_start == 1) {
+    switch (tok_start[0]) {
+      case '=':
+        return formToken(TokenKind::equal, tok_start);
+      case '&':
+        return formToken(TokenKind::amp_prefix, tok_start);
+      case '.': {
+        // 如果`.`左右两边都有边界（例如，它可能位于两个标识符之间），则将其识别为一个普通的`.`。
+        if (left_bound == right_bound) {
+          return formToken(TokenKind::period, tok_start);
+        }
+        if (right_bound) {
+          return formToken(TokenKind::period_prefix, tok_start);
+        }
 
+        // 检查水平空白。
+        const char* after_horz_whitespace = cur_ptr_;
+        while (*after_horz_whitespace == ' ' ||
+               *after_horz_whitespace == '\t') {
+          ++after_horz_whitespace;
+        }
+
+        // 处理代码补全情况。
+        // 例如输入"x. <ESC>"，这段代码确保返回一个`.`token。
+        if (*after_horz_whitespace == '\0' &&
+            after_horz_whitespace == code_completion_ptr_) {
+          // TODO: diag
+          return formToken(TokenKind::period, tok_start);
+        }
+
+        // 处理额外空白情况。
+        // 如果`.`后面的空白之后是一个右边界，并且不是注释的开始（//或/*），则诊断为额外的空白，并建议删除它。
+        if (isRightBound(after_horz_whitespace, left_bound,
+                         code_completion_ptr_) &&
+            *after_horz_whitespace != '/') {
+          // TODO: diag, remove char
+          return formToken(TokenKind::period, tok_start);
+        }
+
+        return formToken(TokenKind::unknown, tok_start);
+      }
+      case '?':
+        if (left_bound) {
+          return formToken(TokenKind::question_postfix, tok_start);
+        }
+        return formToken(TokenKind::question_infix, tok_start);
+    }
+  } else if (cur_ptr_ - tok_start == 2) {
+    // 将两个字符组合成整数。
+    switch ((tok_start[0] << 8) | tok_start[1]) {
+      case ('-' << 8) | '>':  // ->
+        return formToken(TokenKind::arrow, tok_start);
+      case ('*' << 8) | '/':  // */
+        // TODO: diag
+        return formToken(TokenKind::unknown, tok_start);
+    }
+  } else {
+    // 确保在标识符token中没有"*/"这样的字符组合。
+    auto pos = llvm::StringRef(tok_start, cur_ptr_ - tok_start).find("*/");
+    if (pos != llvm::StringRef::npos) {
+      return formToken(TokenKind::unknown, tok_start);
+    }
+  }
+
+  if (left_bound == right_bound) {
+    return formToken(left_bound ? TokenKind::oper_binary_unspaced
+                                : TokenKind::oper_binary_spaced,
+                     tok_start);
+  }
+  return formToken(
+      left_bound ? TokenKind::oper_postfix : TokenKind::oper_prefix, tok_start);
+}
+
+/// $[0-9a-zA-Z_$]+
+void Lexer::lexDollarIdentifier() {
+  const char* tok_start = cur_ptr_ - 1;
+  assert(tok_start[0] == '$' && "Not a dollar identifier");
+
+  // 处理RIL函数体中的$标识符。
+  if (in_ril_body_ && next_token_.getKind() != TokenKind::at_sign) {
+    return formToken(TokenKind::ril_dollar, tok_start);
+  }
+
+  bool is_all_digits = true;
+  while (true) {
+    if (clang::isDigit(*cur_ptr_)) {
+      ++cur_ptr_;
+      continue;
+    } else if (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_)) {
+      is_all_digits = false;
+      continue;
+    }
+    break;
+  }
+
+  if (cur_ptr_ == tok_start + 1) {
+    return formToken(TokenKind::identifier, tok_start);
+  }
+
+  if (!is_all_digits) {
+    return formToken(TokenKind::identifier, tok_start);
+  } else {
+    return formToken(TokenKind::dollarident, tok_start);
+  }
+}
+
+enum class ExpectDigitKind : unsigned { Binary, Octal, Decimal, Hex };
+
+/// 解析十六进制数（`0x`引导）。
+void Lexer::lexHexNumber() {
+  // 根据`0x`引导进行断言。
+  assert(*cur_ptr_ == 'x' && "not a hex literal");
+  const char* tok_start = cur_ptr_ - 1;
+  assert(*tok_start == '0' && "not a hex literal");
+
+  auto expected_digit = [&]() {
+    while (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_))
+      ;
+    return formToken(TokenKind::unknown, tok_start);
+  };
+
+  auto expected_hex_digit = [&]() {
+    // TODO: diag
+    return expected_digit();
+  };
+
+  // 0x[0-9a-fA-F][0-9a-fA-F_]*
+  ++cur_ptr_;
+  if (!clang::isHexDigit(*cur_ptr_)) {
+    return expected_hex_digit();
+  }
+  // 下划线在Radium中用于数字字面量的可读性。
+  while (clang::isHexDigit(*cur_ptr_) || *cur_ptr_ == '_') {
+    ++cur_ptr_;
+  }
+
+  // 检查是否浮点数。
+  // Radium里只用p表示指数，和carbon能选择用e或p不一样。
+  if (*cur_ptr_ != '.' && *cur_ptr_ != 'p' && *cur_ptr_ != 'P') {
+    const auto* tmp = cur_ptr_;
+    if (advanceIfValidContinuationOfIdentifier(tmp, buffer_end_)) {
+      return expected_hex_digit();
+    } else {
+      return formToken(TokenKind::integer_literal, tok_start);
+    }
+  }
+
+  const char* ptr_on_dot = nullptr;
+
+  // 解析小数部分。
+  // (\.[0-9A-Fa-f][0-9A-Fa-f_]*)?
+  if (*cur_ptr_ == '.') {
+    ptr_on_dot = cur_ptr_;
+    ++cur_ptr_;
+    if (!clang::isHexDigit(*cur_ptr_)) {
+      ++cur_ptr_;
+      return formToken(TokenKind::integer_literal, tok_start);
+    }
+
+    while (clang::isHexDigit(*cur_ptr_) || *cur_ptr_ == '_') {
+      ++cur_ptr_;
+    }
+
+    if (*cur_ptr_ != 'p' && *cur_ptr_ != 'P') {
+      if (!clang::isDigit(ptr_on_dot[1])) {
+        cur_ptr_ = ptr_on_dot;
+        return formToken(TokenKind::integer_literal, tok_start);
+      }
+      // TODO: diag
+      return formToken(TokenKind::unknown, tok_start);
+    }
+  }
+
+  // 解析指数部分。
+  // [pP][+-]?[0-9][0-9_]*
+  assert(*cur_ptr_ == 'p' || *cur_ptr_ == 'P' && "not a hex float exponent");
+  ++cur_ptr_;
+
+  bool signed_exponent = false;
+  if (*cur_ptr_ == '+' || *cur_ptr_ == '-') {
+    signed_exponent = true;
+    ++cur_ptr_;
+  }
+
+  // 检查指数的下一个字符是否是数字。
+  if (!clang::isDigit(*cur_ptr_)) {
+    // 检查小数点后的字符是否是数字，并且指数没有符号，例如 0xff.fpValue,
+    // 0xff.fp。
+    if (ptr_on_dot && clang::isDigit(ptr_on_dot[1]) && !signed_exponent) {
+      cur_ptr_ = ptr_on_dot;
+      return formToken(TokenKind::integer_literal, tok_start);
+    }
+
+    const auto* tmp = cur_ptr_;
+    if (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_)) {
+      // TODO: diag
+    }
+
+    return expected_digit();
+  }
+
+  while (clang::isDigit(*cur_ptr_) || *cur_ptr_ == '_') {
+    ++cur_ptr_;
+  }
+
+  const auto* tmp = cur_ptr_;
+  if (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_)) {
+    return expected_digit();
+  }
+
+  return formToken(TokenKind::floating_literal, tok_start);
+}
+
+/// lexNumber:
+///   integer_literal  ::= [0-9][0-9_]*
+///   integer_literal  ::= 0x[0-9a-fA-F][0-9a-fA-F_]*
+///   integer_literal  ::= 0o[0-7][0-7_]*
+///   integer_literal  ::= 0b[01][01_]*
+///   floating_literal ::= [0-9][0-9]_*\.[0-9][0-9_]*
+///   floating_literal ::= [0-9][0-9]*\.[0-9][0-9_]*[eE][+-]?[0-9][0-9_]*
+///   floating_literal ::= [0-9][0-9_]*[eE][+-]?[0-9][0-9_]*
+///   floating_literal ::= 0x[0-9A-Fa-f][0-9A-Fa-f_]*
+///                          (\.[0-9A-Fa-f][0-9A-Fa-f_]*)?[pP][+-]?[0-9][0-9_]*
+void Lexer::lexNumber() {
+  const char* tok_start = cur_ptr_ - 1;
+  assert((clang::isDigit(*tok_start) || *tok_start == '.') &&
+         "Unexpected start");
+
+  // 用于处理无效整数字符，一直尝试前进直到不符合匹配。
+  auto expected_digit = [&]() {
+    while (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_))
+      ;
+    return formToken(TokenKind::unknown, tok_start);
+  };
+
+  auto expected_int_digit = [&](const char* loc, ExpectDigitKind kind) {
+    // TODO: diag
+    return expected_digit();
+  };
+
+  // 16进制。
+  if (*tok_start == '0' && *cur_ptr_ == 'x') {
+    return lexHexNumber();
+  }
+
+  // 8进制：0o[0-7][0-7_]*
+  if (*tok_start == '0' && *cur_ptr_ == 'o') {
+    ++cur_ptr_;
+    if (*cur_ptr_ < '0' || *cur_ptr_ > '7') {
+      return expected_int_digit(cur_ptr_, ExpectDigitKind::Octal);
+    }
+
+    while ((*cur_ptr_ >= '0' && *cur_ptr_ <= '7') || *cur_ptr_ == '_') {
+      ++cur_ptr_;
+    }
+
+    const auto* tmp = cur_ptr_;
+    if (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_)) {
+      return expected_int_digit(tmp, ExpectDigitKind::Octal);
+    }
+
+    return formToken(TokenKind::integer_literal, tok_start);
+  }
+
+  while (clang::isDigit(*cur_ptr_) || *cur_ptr_ == '_') {
+    ++cur_ptr_;
+  }
+
+  if (*cur_ptr_ == '.') {
+    if (!clang::isDigit(cur_ptr_[1]) || next_token_.is(TokenKind::period)) {
+      return formToken(TokenKind::integer_literal, tok_start);
+    }
+  } else {
+    if (*cur_ptr_ != 'e' && *cur_ptr_ != 'E') {
+      const auto* tmp = cur_ptr_;
+      if (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_)) {
+        return expected_int_digit(tmp, ExpectDigitKind::Decimal);
+      }
+      return formToken(TokenKind::integer_literal, tok_start);
+    }
+  }
+
+  if (*cur_ptr_ == '.') {
+    ++cur_ptr_;
+
+    while (clang::isDigit(*cur_ptr_) || *cur_ptr_ == '_') {
+      ++cur_ptr_;
+    }
+  }
+
+  if (*cur_ptr_ == 'e' || *cur_ptr_ == 'E') {
+    ++cur_ptr_;
+    if (*cur_ptr_ == '+' || *cur_ptr_ == '-') {
+      ++cur_ptr_;
+    }
+
+    if (!clang::isDigit(*cur_ptr_)) {
+      const auto* tmp = cur_ptr_;
+      if (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_)) {
+        // TODO: diag
+      }
+      return expected_digit();
+    }
+
+    while (clang::isDigit(*cur_ptr_) || *cur_ptr_ == '_') {
+      ++cur_ptr_;
+    }
+
+    const auto* tmp = cur_ptr_;
+    if (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_)) {
+      // TODO:: diag
+      return expected_digit();
+    }
+  }
+  return formToken(TokenKind::floating_literal, tok_start);
 }
 
 auto Lexer::lexTrivia(bool is_for_trailing_trivia, const char* all_trivia_start)

@@ -240,7 +240,7 @@ class Lexer {
 
   static auto isOperator(llvm::StringRef string) -> bool;
 
-  static auto kindOfIdentifier(llvm::StringRef identifier) -> TokenKind;
+  static auto kindOfIdentifier(llvm::StringRef identifier, bool in_ril_mode) -> TokenKind;
 
   // 计算实际字符串字面量应该编码的字节数。
   static auto getEncodedStringSegment(StringRef str,
