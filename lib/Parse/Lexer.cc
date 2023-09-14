@@ -2,6 +2,7 @@
 
 #include <llvm-15/llvm/ADT/StringRef.h>
 #include <llvm-15/llvm/ADT/StringSwitch.h>
+#include <llvm-15/llvm/Support/Compiler.h>
 
 #include "Radium/AST/Identifier.h"
 #include "Radium/Basic/Fallthrough.h"
@@ -149,7 +150,7 @@ auto validateUTF8CharacterAndAdvance(const char*& ptr, const char* end)
 }
 
 //===----------------------------------------------------------------------===//
-// advance helper
+// advance and character helper
 //===----------------------------------------------------------------------===//
 
 /// 从cur_ptr的字符串中一直查找到行尾或找到其中的某些特殊字符（特指换行符）。
@@ -272,6 +273,7 @@ static auto advanceIfValidContinuationOfOperator(char const*& ptr,
 
 static auto diagnoseZeroWidthMatchAndAdvance(char target, const char*& cur_ptr)
     -> bool {
+  // TODO: diag
   return *cur_ptr == target && cur_ptr++;
 }
 
@@ -288,6 +290,81 @@ static auto advanceIfCustomDelimiter(const char*& cur_ptr) -> unsigned {
     return custom_delimiter_len;
   }
   return 0;
+}
+
+/// 检查是否存在有效的省略换行符转义。
+static auto maybeConsumeNewlineEscape(const char*& cur_ptr, ssize_t offset)
+    -> bool {
+  const char* tmp_ptr = cur_ptr + offset;
+  while (true) {
+    switch (*tmp_ptr++) {
+      case ' ':
+      case '\t':
+        continue;
+      case '\r':
+        if (*tmp_ptr == '\n') {
+          ++tmp_ptr;
+        }
+        LLVM_FALLTHROUGH;
+      case '\n':
+        cur_ptr = tmp_ptr;
+        return true;
+      case 0:
+      default:
+        return false;
+    }
+  }
+}
+
+/// 检查一个字符串是否以给定数量的 '#' 字符开始，
+/// 并检查''后面的 '#' 字符数量是否与之匹配。
+/// custom_delimiter_len代表期望的`#`字符数。
+/// byte_ptr代表要检查的字符串的指针。
+/// is_closing表示是否正在查找字符串的结束分隔符。
+static auto delimiterMatches(unsigned custom_delimiter_len,
+                             const char*& bytes_ptr, bool is_closing = false)
+    -> bool {
+  if (!custom_delimiter_len) {
+    return true;
+  }
+  const char* tmp_ptr = bytes_ptr;
+  while (diagnoseZeroWidthMatchAndAdvance('#', tmp_ptr)) {
+  }
+
+  if (tmp_ptr - bytes_ptr < custom_delimiter_len) {
+    return false;
+  }
+
+  // TODO: diag
+  return true;
+}
+
+/// 检查一个字符串是否包含多行字符串分隔符。
+static auto advanceIfMultilineDelimiter(unsigned custom_delimiter_len,
+                                        const char*& cur_ptr,
+                                        bool is_opening = false) -> bool {
+  const char* tmp_ptr = cur_ptr + 1;
+  if (is_opening && custom_delimiter_len) {
+    while (*tmp_ptr != '\r' && *tmp_ptr != '\n') {
+      if (*tmp_ptr == '"') {
+        if (delimiterMatches(custom_delimiter_len, ++tmp_ptr)) {
+          cur_ptr = tmp_ptr + custom_delimiter_len + 1;
+          return true;
+        }
+        continue;
+      }
+      ++tmp_ptr;
+    }
+  }
+
+  tmp_ptr = cur_ptr;
+  if (*(tmp_ptr - 1) == '"' && diagnoseZeroWidthMatchAndAdvance('"', tmp_ptr) &&
+      diagnoseZeroWidthMatchAndAdvance('"', tmp_ptr)) {
+    cur_ptr = tmp_ptr;
+    return true;
+  }
+
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -378,6 +455,207 @@ static auto rangeContainsPlaceholderEnd(const char* cur_ptr, const char* end)
     }
   }
   return false;
+}
+
+/// 跳过并识别/* ... */风格的块注释。这种注释可以跨越多行，并且可以嵌套。
+static auto skipToEndOfSlashStarComment(
+    const char*& cur_ptr, const char* buffer_end,
+    const char* code_completion_ptr = nullptr) -> bool {
+  const char* start_ptr = cur_ptr - 1;
+  assert(cur_ptr[-1] == '/' && cur_ptr[0] == '*' && "Not a /* comment");
+
+  ++cur_ptr;
+
+  // /**/ comments can be nested, keep track of how deep we've gone.
+  unsigned depth = 1;
+  bool is_multiline = false;
+
+  while (true) {
+    switch (*cur_ptr++) {
+      case '*':
+        // Check for a '*/'
+        if (*cur_ptr == '/') {
+          ++cur_ptr;
+          if (--depth == 0) {
+            return is_multiline;
+          }
+        }
+        break;
+      case '/':
+        // Check for a '/*'
+        if (*cur_ptr == '*') {
+          ++cur_ptr;
+          ++depth;
+        }
+        break;
+
+      case '\n':
+      case '\r':
+        is_multiline = true;
+        break;
+
+      default:
+        // If this is a "high" UTF-8 character, validate it.
+        if ((signed char)(cur_ptr[-1]) < 0) {
+          --cur_ptr;
+          const char* char_start = cur_ptr;
+        }
+
+        break;  // Otherwise, eat other characters.
+      case 0:
+        if (cur_ptr - 1 != buffer_end) {
+          continue;
+        }
+        // Otherwise, we have an unterminated /* comment.
+        --cur_ptr;
+
+        return is_multiline;
+    }
+  }
+}
+
+/// 在字符串字面量中找到插值表达式的结束位置。
+/// 插值表达式是像这样的东西：\(...)，其中...是要插入字符串的任何表达式。
+static auto skipToEndOfInterpolatedExpression(const char* cur_ptr,
+                                              const char* end_ptr,
+                                              bool is_multiline_string) -> const
+    char* {
+  SmallVector<char, 4> open_delimiters;
+  SmallVector<bool, 4> allow_newline;
+  SmallVector<unsigned, 4> custom_delimiter;
+  allow_newline.push_back(is_multiline_string);
+
+  auto in_string_literal = [open_delimiters]() {
+    return !open_delimiters.empty() &&
+           (open_delimiters.back() == '"' || open_delimiters.back() == '\'');
+  };
+  while (true) {
+    // 在插值字符串中，表达式不能跨越多行。
+    unsigned custom_delimiter_len = 0;
+    switch (*cur_ptr++) {
+      case '\n':
+      case '\r':
+        if (allow_newline.back()) {
+          continue;
+        }
+        return cur_ptr - 1;
+      case 0:
+        if (cur_ptr - 1 != end_ptr)
+          continue;
+        return cur_ptr - 1;
+
+      case '#':
+        if (in_string_literal() ||
+            !(custom_delimiter_len = advanceIfCustomDelimiter(cur_ptr)))
+          continue;
+        assert(cur_ptr[-1] == '"' &&
+               "advanceIfCustomDelimiter() must stop at after the quote");
+        LLVM_FALLTHROUGH;
+
+      case '"':
+      case '\'': {
+        if (!in_string_literal()) {
+          // Open string literal.
+          open_delimiters.push_back(cur_ptr[-1]);
+          allow_newline.push_back(
+              advanceIfMultilineDelimiter(custom_delimiter_len, cur_ptr, true));
+          custom_delimiter.push_back(custom_delimiter_len);
+          continue;
+        }
+
+        // In string literal.
+
+        // Skip if it's an another kind of quote in string literal. e.g.
+        // "foo's".
+        if (open_delimiters.back() != cur_ptr[-1])
+          continue;
+
+        // Multi-line string can only be closed by '"""'.
+        if (allow_newline.back() &&
+            !advanceIfMultilineDelimiter(custom_delimiter_len, cur_ptr))
+          continue;
+
+        // Check whether we have equivalent number of '#'s.
+        if (!delimiterMatches(custom_delimiter.back(), cur_ptr, true))
+          continue;
+
+        // Close string literal.
+        open_delimiters.pop_back();
+        allow_newline.pop_back();
+        custom_delimiter.pop_back();
+        continue;
+      }
+      case '\\':
+        // We ignore invalid escape sequence here. They should be diagnosed in
+        // the real lexer functions.
+        if (in_string_literal() &&
+            delimiterMatches(custom_delimiter.back(), cur_ptr)) {
+          switch (*cur_ptr++) {
+            case '(':
+              // Entering a recursive interpolated expression
+              open_delimiters.push_back('(');
+              continue;
+            case '\n':
+            case '\r':
+            case 0:
+              // Don't jump over newline/EOF due to preceding backslash.
+              // Let the outer switch to handle it.
+              --cur_ptr;
+              continue;
+            default:
+              continue;
+          }
+        }
+        continue;
+
+      // Paren nesting deeper to support "foo = \((a+b)-(c*d)) bar".
+      case '(':
+        if (!in_string_literal()) {
+          open_delimiters.push_back('(');
+        }
+        continue;
+      case ')':
+        if (open_delimiters.empty()) {
+          // No outstanding open delimiters; we're done.
+          return cur_ptr - 1;
+        } else if (open_delimiters.back() == '(') {
+          // Pop the matching bracket and keep going.
+          open_delimiters.pop_back();
+          continue;
+        } else {
+          // It's a right parenthesis in a string literal.
+          assert(in_string_literal());
+          continue;
+        }
+      case '/':
+        if (in_string_literal())
+          continue;
+
+        if (*cur_ptr == '*') {
+          auto CommentStart = cur_ptr - 1;
+          bool isMultilineComment =
+              skipToEndOfSlashStarComment(cur_ptr, end_ptr);
+          if (isMultilineComment && !allow_newline.back()) {
+            // Multiline comment is prohibited in string literal.
+            // Return the start of the comment.
+            return CommentStart;
+          }
+        } else if (*cur_ptr == '/') {
+          if (!allow_newline.back()) {
+            // '//' comment is impossible in single line string literal.
+            // Return the start of the comment.
+            return cur_ptr - 1;
+          }
+          // Advance to the end of the comment.
+          if (/*isEOL=*/advanceToEndOfLine(cur_ptr, end_ptr))
+            ++cur_ptr;
+        }
+        continue;
+      default:
+        // Normal token character.
+        continue;
+    }
+  }
 }
 
 //===----------------------------------------------------------------------===//
@@ -491,6 +769,29 @@ void Lexer::formToken(TokenKind kind, const char* tok_start) {
   next_token_.setToken(kind, token_text, comment_length);
 }
 
+void Lexer::formEscapedIdentifierToken(const char* tok_start) {
+  assert(cur_ptr_ - tok_start >= 3 &&
+         "escaped identifier must be longer than or equal 3 bytes");
+  assert(tok_start[0] == '`' && "escaped identifier starts with backtick");
+  assert(cur_ptr_[-1] == '`' && "escaped identifier ends with backtick");
+
+  formToken(TokenKind::identifier, tok_start);
+  if (next_token_.is(TokenKind::eof)) {
+    return;
+  }
+  next_token_.setEscapedIdentifier(true);
+}
+
+void Lexer::formStringLiteralToken(const char* tok_start,
+                                   bool is_multiline_string,
+                                   unsigned custom_delimiter_len) {
+  formToken(TokenKind::string_literal, tok_start);
+  if (next_token_.is(TokenKind::eof)) {
+    return;
+  }
+  next_token_.setStringLiteral(is_multiline_string, custom_delimiter_len);
+}
+
 auto Lexer::getStateForBeginningOfTokenLoc(SourceLoc loc) const
     -> Lexer::State {
   const char* ptr = getBufferPtrForSourceLoc(loc);
@@ -539,38 +840,42 @@ void Lexer::skipHashbang(bool eat_newline) {
 }
 
 void Lexer::skipSlashStarComment() {
-  const char* start_ptr = cur_ptr_ - 1;
-  assert(cur_ptr_[-1] == '/' && cur_ptr_[0] == '*' && "Not a /* comment");
-  ++cur_ptr_;
+  // const char* start_ptr = cur_ptr_ - 1;
+  // assert(cur_ptr_[-1] == '/' && cur_ptr_[0] == '*' && "Not a /* comment");
+  // ++cur_ptr_;
+  // // /* 注释可以被嵌套。
+  // unsigned depth = 1;
+  // while (true) {
+  //   switch (*cur_ptr_++) {
+  //     case '*':
+  //       // 如果是'*/'，则减少深度。
+  //       if (cur_ptr_[0] == '/') {
+  //         ++cur_ptr_;
+  //         if (--depth == 0) {
+  //           return;
+  //         }
+  //       }
+  //       break;
+  //     case '/':
+  //       // 如果是'/*'，则增加深度。
+  //       if (cur_ptr_[0] == '*') {
+  //         ++cur_ptr_;
+  //         ++depth;
+  //       }
+  //       break;
+  //     case '\n':
+  //     case '\r':
+  //       next_token_.setAtStartOfLine(true);
+  //       break;
+  //     default:
+  //       break;
+  //   }
+  // }
 
-  // /* 注释可以被嵌套。
-  unsigned depth = 1;
-
-  while (true) {
-    switch (*cur_ptr_++) {
-      case '*':
-        // 如果是'*/'，则减少深度。
-        if (cur_ptr_[0] == '/') {
-          ++cur_ptr_;
-          if (--depth == 0) {
-            return;
-          }
-        }
-        break;
-      case '/':
-        // 如果是'/*'，则增加深度。
-        if (cur_ptr_[0] == '*') {
-          ++cur_ptr_;
-          ++depth;
-        }
-        break;
-      case '\n':
-      case '\r':
-        next_token_.setAtStartOfLine(true);
-        break;
-      default:
-        break;
-    }
+  bool is_multiline =
+      skipToEndOfSlashStarComment(cur_ptr_, buffer_end_, code_completion_ptr_);
+  if (is_multiline) {
+    next_token_.setAtStartOfLine(true);
   }
 }
 
@@ -683,6 +988,34 @@ void Lexer::lexHash() {
 
   cur_ptr_ = tmp_ptr;
   return formToken(kind, tok_start);
+}
+
+/// lexEscapedIdentifier:
+///   identifier ::= '`' identifier '`'
+void Lexer::lexEscapedIdentifier() {
+  assert(cur_ptr_[-1] == '`' && "not an escaped identifier");
+  const char* quote = cur_ptr_ - 1;
+
+  const char* identifier_start = cur_ptr_;
+  if (advanceIfValidStartOfIdentifier(cur_ptr_, buffer_end_)) {
+    while (advanceIfValidContinuationOfIdentifier(cur_ptr_, buffer_end_))
+      ;
+
+    if (*cur_ptr_ == '`') {
+      ++cur_ptr_;
+      formEscapedIdentifierToken(quote);
+      return;
+    }
+  }
+
+  if (quote[1] == '$' && quote[2] == '`') {
+    cur_ptr_ = quote + 3;
+    formEscapedIdentifierToken(quote);
+    return;
+  }
+
+  cur_ptr_ = identifier_start;
+  formToken(TokenKind::backtick, quote);
 }
 
 /// 识别和处理由标点符号构成的操作符标识符。
@@ -1040,6 +1373,324 @@ void Lexer::lexNumber() {
     }
   }
   return formToken(TokenKind::floating_literal, tok_start);
+}
+
+///   unicode_character_escape ::= [\]u{hex+}
+///   hex                      ::= [0-9a-fA-F]
+/// 解析并验证Unicode字符转义序列。
+auto Lexer::lexUnicodeEscape(const char*& cur_ptr) -> unsigned {
+  // 确保当前的字符是`{`，这是Unicode转义序列的开始
+  assert(cur_ptr[0] == '{' && "Invalid unicode escape");
+  ++cur_ptr;
+
+  const char* digit_start = cur_ptr;
+
+  unsigned num_digits = 0;
+  for (; clang::isHexDigit(cur_ptr[0]); ++num_digits) {
+    ++cur_ptr;
+  }
+
+  if (cur_ptr[0] != '}') {
+    // TODO: diag
+    return ~1U;
+  }
+  ++cur_ptr;
+
+  if (num_digits < 1 || num_digits > 8) {
+    // TODO: diag
+    return ~1U;
+  }
+
+  unsigned char_value = 0;
+  llvm::StringRef(digit_start, num_digits).getAsInteger(16, char_value);
+  return char_value;
+}
+
+auto Lexer::lexCharacter(const char*& cur_ptr, char stop_quote,
+                         bool is_multiline_string,
+                         unsigned custom_delimiter_len) -> unsigned {
+  const char* char_start = cur_ptr;
+
+  switch (*cur_ptr++) {
+    default: {  // Normal characters are part of the string.
+      // Normal characters are part of the string.
+      // If this is a "high" UTF-8 character, validate it.
+      if ((signed char)(cur_ptr[-1]) >= 0) {
+        return cur_ptr[-1];
+      }
+      --cur_ptr;
+      unsigned char_value =
+          validateUTF8CharacterAndAdvance(cur_ptr, buffer_end_);
+      if (char_value != ~0U)
+        return char_value;
+      return ~1U;
+    }
+    case '"':
+    case '\'':
+      if (cur_ptr[-1] == stop_quote) {
+        // Multiline and custom escaping are only enabled for " quote.
+        if (LLVM_UNLIKELY(stop_quote != '"'))
+          return ~0U;
+        if (!is_multiline_string && !custom_delimiter_len)
+          return ~0U;
+
+        auto tmp_ptr = cur_ptr;
+        if (is_multiline_string &&
+            !advanceIfMultilineDelimiter(custom_delimiter_len, tmp_ptr))
+          return '"';
+        if (custom_delimiter_len &&
+            !delimiterMatches(custom_delimiter_len, tmp_ptr,
+                              /*IsClosing=*/true))
+          return '"';
+        cur_ptr = tmp_ptr;
+        return ~0U;
+      }
+      // Otherwise, this is just a character.
+      return cur_ptr[-1];
+
+    case 0:
+      assert(cur_ptr - 1 != buffer_end_ && "Caller must handle EOF");
+      return cur_ptr[-1];
+    case '\n':  // String literals cannot have \n or \r in them.
+    case '\r':
+      assert(is_multiline_string &&
+             "Caller must handle newlines in non-multiline");
+      return cur_ptr[-1];
+    case '\\':  // Escapes.
+      if (!delimiterMatches(custom_delimiter_len, cur_ptr))
+        return '\\';
+      break;
+  }
+
+  unsigned char_value = 0;
+  // Escape processing.  We already ate the "\".
+  switch (*cur_ptr) {
+    case ' ':
+    case '\t':
+    case '\n':
+    case '\r':
+      if (is_multiline_string && maybeConsumeNewlineEscape(cur_ptr, 0))
+        return '\n';
+      LLVM_FALLTHROUGH;
+    default:  // Invalid escape.
+      // If this looks like a plausible escape character, recover as though this
+      // is an invalid escape.
+      if (clang::isAlphanumeric(*cur_ptr))
+        ++cur_ptr;
+      return ~1U;
+
+    // Simple single-character escapes.
+    case '0':
+      ++cur_ptr;
+      return '\0';
+    case 'n':
+      ++cur_ptr;
+      return '\n';
+    case 'r':
+      ++cur_ptr;
+      return '\r';
+    case 't':
+      ++cur_ptr;
+      return '\t';
+    case '"':
+      ++cur_ptr;
+      return '"';
+    case '\'':
+      ++cur_ptr;
+      return '\'';
+    case '\\':
+      ++cur_ptr;
+      return '\\';
+
+    case 'u': {  //  \u HEX HEX HEX HEX
+      ++cur_ptr;
+      if (*cur_ptr != '{') {
+        return ~1U;
+      }
+
+      char_value = lexUnicodeEscape(cur_ptr);
+      if (char_value == ~1U)
+        return ~1U;
+      break;
+    }
+  }
+
+  // Check to see if the encoding is valid.
+  llvm::SmallString<64> temp_string;
+  if (char_value >= 0x80 && EncodeToUTF8(char_value, temp_string)) {
+    return ~1U;
+  }
+
+  return char_value;
+}
+
+/// lexStringLiteral:
+///   string_literal ::= ["]([^"\\\n\r]|character_escape)*["] // 单行
+///   string_literal ::= ["]["]["].*["]["]["] - approximately // 多行
+///   string_literal ::= (#+)("")?".*"(\2\1) - "raw" strings  // raw: ##"str"##
+void Lexer::lexStringLiteral(unsigned custom_delimiter_len) {
+  const char quote_char = cur_ptr_[-1];
+  const char* tok_start = cur_ptr_ - 1 - custom_delimiter_len;
+
+  assert((quote_char == '"' || quote_char == '\'') && "Unexpected quote char");
+  bool is_multiline_string =
+      advanceIfMultilineDelimiter(custom_delimiter_len, cur_ptr_, true);
+  // TODO: diag
+
+  bool was_erroneous = false;
+  while (true) {
+    const char* tmp_ptr = cur_ptr_ + 1;
+    if (*cur_ptr_ == '\\' && delimiterMatches(custom_delimiter_len, tmp_ptr) &&
+        *tmp_ptr++ == '(') {
+      cur_ptr_ = skipToEndOfInterpolatedExpression(tmp_ptr, buffer_end_,
+                                                   is_multiline_string);
+
+      if (*cur_ptr_ == ')') {
+        ++cur_ptr_;
+        continue;
+      } else {
+        if ((*cur_ptr_ == '\r' || *cur_ptr_ == '\n') && is_multiline_string) {
+          was_erroneous = true;
+          continue;
+        } else if (!is_multiline_string || cur_ptr_ == buffer_end_) {
+          // TODO: diag
+        }
+        return formToken(TokenKind::unknown, tok_start);
+      }
+    }
+
+    if (((*cur_ptr_ == '\r' || *cur_ptr_ == '\n') && is_multiline_string) ||
+        cur_ptr_ == buffer_end_) {
+      return formToken(TokenKind::unknown, tok_start);
+    }
+
+    unsigned char_value = lexCharacter(cur_ptr_, quote_char);
+    if (char_value == ~0U) {
+      break;
+    }
+    was_erroneous |= char_value == ~1U;
+  }
+
+  if (was_erroneous) {
+    return formToken(TokenKind::unknown, tok_start);
+  }
+
+  return formStringLiteralToken(tok_start, is_multiline_string,
+                                custom_delimiter_len);
+}
+
+/// 处理未知或者非法字符。
+/// 如无效的UTF-8字符、非换行空格、花括号引号和混淆的字符。
+auto Lexer::lexUnknown() -> bool {
+  const char* tmp = cur_ptr_ - 1;
+
+  if (advanceIfValidContinuationOfIdentifier(tmp, buffer_end_)) {
+    while (advanceIfValidContinuationOfOperator(tmp, buffer_end_))
+      ;
+    cur_ptr_ = tmp;
+    return true;
+  }
+
+  uint32_t code_point = validateUTF8CharacterAndAdvance(tmp, buffer_end_);
+  if (code_point == ~0U) {
+    cur_ptr_ = tmp;
+    return false;
+  } else if (code_point == 0x000000A0) {  // 检查码点是否为非换行空格(U+00A0)。
+    while (tmp[0] == '\xC2' && tmp[1] == '\xA0') {
+      tmp += 2;
+    }
+    llvm::SmallString<8> spaces;
+    spaces.assign((tmp - cur_ptr_ + 1) / 2, ' ');
+    cur_ptr_ = tmp;
+    return false;
+  } else if (code_point ==
+             0x0000201D) {  // 检查码点是否为结束的花括号引号(U+201D)。
+    cur_ptr_ = tmp;
+    return true;
+  } else if (code_point ==
+             0x0000201C) {  // 检查码点是否为开始的花括号引号(U+201C)。
+    // TODO: do fuzzy match.
+    cur_ptr_ = tmp;
+    return true;
+  }
+
+  // TODO: expected code point
+  cur_ptr_ = tmp;
+  return false;
+}
+
+auto Lexer::tryScanRegexLiteral(const char* tok_start, bool must_be_regex,
+                                bool& completely_erroneous) const -> const
+    char* {
+  bool is_forward_slash = tok_start[0] == '/';
+
+  auto space_or_tab_description = [](char c) -> llvm::StringRef {
+    switch (c) {
+      case ' ':
+        return "space";
+      case '\t':
+        return "tab";
+      default:
+        llvm_unreachable("Unhandled case");
+    }
+  };
+
+  if (is_forward_slash) {
+    const auto* regex_content_start = tok_start + 1;
+    if (*regex_content_start == ' ' || *regex_content_start == '\t') {
+      if (!must_be_regex) {
+        return nullptr;
+      }
+    }
+  }
+
+  auto* ptr = tok_start;
+
+  // TODO: Lex regex, not finish, just return nullptr.
+
+  if (ptr == tok_start) {
+    return nullptr;
+  }
+
+  assert(ptr > tok_start && ptr <= buffer_end_ && "Invalid pointer");
+  return ptr;
+}
+
+auto Lexer::tryLexRegexLiteral(const char* tok_start) -> bool {
+  bool is_forward_slash = tok_start[0] == '/';
+  bool must_be_regex = true;
+
+  if (is_forward_slash) {
+    switch (forward_slash_regex_mode_) {
+      case Radium::LexerForwardSlashRegexMode::None:
+        return false;
+      case Radium::LexerForwardSlashRegexMode::Tentative:
+        must_be_regex = false;
+        break;
+      case Radium::LexerForwardSlashRegexMode::Always:
+        break;
+    }
+  }
+
+  bool completed_erroneous = false;
+  auto* ptr =
+      tryScanRegexLiteral(tok_start, must_be_regex, completed_erroneous);
+  if (!ptr) {
+    return false;
+  }
+  cur_ptr_ = ptr;
+  if (completed_erroneous) {
+    formToken(TokenKind::unknown, tok_start);
+    return true;
+  }
+
+  formToken(TokenKind::regex_literal, tok_start);
+  return true;
+}
+
+auto Lexer::tryLexConflictMarker(bool eat_newline) -> bool {
+  // TODO
+  return false;
 }
 
 auto Lexer::lexTrivia(bool is_for_trailing_trivia, const char* all_trivia_start)

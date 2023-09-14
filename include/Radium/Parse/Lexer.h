@@ -240,7 +240,8 @@ class Lexer {
 
   static auto isOperator(llvm::StringRef string) -> bool;
 
-  static auto kindOfIdentifier(llvm::StringRef identifier, bool in_ril_mode) -> TokenKind;
+  static auto kindOfIdentifier(llvm::StringRef identifier, bool in_ril_mode)
+      -> TokenKind;
 
   // 计算实际字符串字面量应该编码的字节数。
   static auto getEncodedStringSegment(StringRef str,
@@ -277,6 +278,9 @@ class Lexer {
   void lexImpl();
 
   void formToken(TokenKind kind, const char* tok_start);
+  void formEscapedIdentifierToken(const char* tok_start);
+  void formStringLiteralToken(const char* tok_start, bool is_multiline_string,
+                              unsigned custom_delimiter_len);
 
   void skipToEndOfLine(bool eat_newline);
 
@@ -301,12 +305,18 @@ class Lexer {
   auto lexTrivia(bool is_for_trailing_trivia, const char* all_trivia_start)
       -> llvm::StringRef;
 
-  auto lexCharacter(const char*& cur_ptr, bool stop_at_double_quote,
-                    bool emit_diagnostics) -> unsigned;
-  void lexCharacterLiteral();
+  static auto lexUnicodeEscape(const char*& cur_ptr) -> unsigned;
+
+  auto lexCharacter(const char*& cur_ptr, char stop_quote,
+                    bool is_multiline_string = false,
+                    unsigned custom_delimiter_len = 0) -> unsigned;
+
   void lexStringLiteral(unsigned custom_delimiter_len = 0);
 
   auto tryLexRegexLiteral(const char* tok_start) -> bool;
+
+  auto tryScanRegexLiteral(const char* tok_start, bool must_be_regex,
+                           bool& completely_erroneous) const -> const char*;
 
   auto tryLexConflictMarker(bool eat_newline) -> bool;
 

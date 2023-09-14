@@ -125,6 +125,14 @@ class Token {
     }
   }
 
+  auto isEscapedIdentifier() const -> bool { return escaped_identifier_; }
+
+  void setEscapedIdentifier(bool value) {
+    assert((!value || kind_ == TokenKind::identifier) &&
+           "Only identifiers can be escaped");
+    escaped_identifier_ = value;
+  }
+
   auto getLoc() const -> SourceLoc {
     return SourceLoc(llvm::SMLoc::getFromPointer(text_.begin()));
   }
@@ -142,6 +150,13 @@ class Token {
     escaped_identifier_ = false;
     multiline_string_ = false;
     custom_delimiter_len_ = 0;
+  }
+
+  void setStringLiteral(bool is_multiline_string,
+                        unsigned custom_delimiter_len) {
+    assert(kind_ == TokenKind::string_literal);
+    this->multiline_string_ = is_multiline_string;
+    this->custom_delimiter_len_ = custom_delimiter_len;
   }
 
   auto getCommentStart() const -> SourceLoc {

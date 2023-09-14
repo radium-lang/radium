@@ -71,6 +71,7 @@ list(APPEND RADIUM_PARSE_SRCS ${LIB_PARSE_PATH})
 add_library(${RADIUM_PARSE_LIB} STATIC ${RADIUM_PARSE_SRCS})
 target_link_libraries(${RADIUM_PARSE_LIB}
   LLVMSupport
+  clangBasic
 )
 ##### radiumParse lib end   #####
 
