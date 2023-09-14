@@ -1,9 +1,5 @@
 #include "Radium/Parse/Lexer.h"
 
-#include <llvm-15/llvm/ADT/StringRef.h>
-#include <llvm-15/llvm/ADT/StringSwitch.h>
-#include <llvm-15/llvm/Support/Compiler.h>
-
 #include "Radium/AST/Identifier.h"
 #include "Radium/Basic/Fallthrough.h"
 #include "Radium/Basic/LangOptions.h"
