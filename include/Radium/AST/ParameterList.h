@@ -22,10 +22,10 @@ class ParameterList final {
                      llvm::ArrayRef<ParamDecl*> params, SourceLoc r_paren_loc)
       -> ParameterList*;
 
-  static auto create(const ASTContext& ctx, llvm::ArrayRef<ParamDecl*> params)
-      -> ParameterList* {
-    return create(ctx, SourceLoc(), params, SourceLoc());
-  }
+  // static auto create(const ASTContext& ctx, llvm::ArrayRef<ParamDecl*> params)
+  //     -> ParameterList* {
+  //   return create(ctx, SourceLoc(), params, SourceLoc());
+  // }
 
  private:
   SourceLoc l_paren_loc_, r_paren_loc_;

@@ -1,8 +1,12 @@
-#include "Radium/Parse/Parser.h"
+#include "Radium/ParseBK/Parser.h"
+
+#include <set>
 
 #include "Radium/AST/ASTConsumer.h"
 #include "Radium/AST/Decl.h"
 #include "Radium/AST/Expr.h"
+#include "Radium/Basic/LangOptions.h"
+#include "Radium/Basic/SourceManager.h"
 #include "Radium/Parse/Lexer.h"
 #include "Radium/Parse/Token.h"
 #include "Radium/Sema/Sema.h"
@@ -10,6 +14,34 @@
 #include "llvm/Support/SourceMgr.h"
 
 namespace Radium {
+
+template <typename DestFunc>
+void tokenize(const LangOptions& lang_opts, const SourceManager& sm,
+              unsigned buffer_id, unsigned offset, unsigned end_offset,
+              CommentRetentionMode retain_comments,
+              bool tokenize_interpolated_string,
+              llvm::ArrayRef<Token> split_tokens, DestFunc&& dest_func) {
+  if (offset == 0 && end_offset == 0) {
+    end_offset = sm.getRangeForBuffer(buffer_id).getByteLength();
+  }
+
+  Lexer lexer(lang_opts, sm, buffer_id, LexerMode::Radium,
+              HashbangMode::Allowed, retain_comments, offset, end_offset);
+
+  auto tok_comp = [&](const Token& a, const Token& b) {
+    return sm.isBeforeInBuffer(a.getLoc(), b.getLoc());
+  };
+
+  std::set<Token, decltype(tok_comp)> reset_tokens(tok_comp);
+  for (const auto& split_token : split_tokens) {
+    reset_tokens(split_token);
+  }
+
+  Token tok;
+  do {
+    lexer.lex(tok);
+  }
+}
 
 using llvm::SMLoc;
 
