@@ -1,45 +1,31 @@
 #ifndef RADIUM_AST_ASTCONTEXT_H
 #define RADIUM_AST_ASTCONTEXT_H
 
-#include "llvm/ADT/PointerUnion.h"
-#include "llvm/Support/Allocator.h"
-
-namespace llvm {
-class SourceMgr;
-template <typename T>
-class FoldingSet;
-}  // namespace llvm
+#include "Radium/Basic/LangOptions.h"
+#include "Radium/Basic/SourceManager.h"
 
 namespace Radium {
 
-class Type;
-class TupleType;
-class FunctionType;
-class VarDecl;
-
-class ASTContext {
-  ASTContext(const ASTContext&);
-  void operator=(const ASTContext&);
+class ASTContext final {
+ private:
+  ASTContext(LangOptions& lang_opts, SourceManager& sm);
 
  public:
-  ASTContext(llvm::SourceMgr& src_mgr);
+  struct Implementation;
+
+  auto getImpl() const -> Implementation&;
+
+  static auto get(LangOptions& lang_opts, SourceManager& sm) -> ASTContext*;
+
   ~ASTContext();
 
-  auto GetTupleType(const llvm::PointerUnion<Type*, VarDecl*>* fields,
-                    unsigned num_fields) -> TupleType*;
+  ASTContext(const ASTContext&) = delete;
+  void operator=(const ASTContext&) = delete;
 
-  auto GetFunctionType(Type* input, Type* result) -> FunctionType*;
+ public:
+  const LangOptions& lang_opts;
 
-  auto Allocate(uint64_t bytes, unsigned alignment) -> void*;
-
-  llvm::SourceMgr& src_mgr_;
-  Type* const void_type_;
-  Type* const int_type_;
-
- private:
-  llvm::BumpPtrAllocator* allocator_;
-  void* tuple_types_;
-  void* function_types_;
+  SourceManager& src_mgr;
 };
 
 }  // namespace Radium
